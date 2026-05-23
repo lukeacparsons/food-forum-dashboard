@@ -98,8 +98,20 @@ async function loadActivity() {
   $("#member-list").innerHTML = members.members.slice(0, 12).map((member) => `
     <article class="row">
       <div>
-        <div class="row-title">Member ${escapeHtml(member.member_id)}</div>
-        <div class="row-meta">${fmt(member.snapshots_seen)} snapshots | latest ${escapeHtml(dateText(member.latest_activity_utc))}</div>
+        <div class="row-title">
+          ${member.profile_url
+            ? `<a href="${escapeHtml(member.profile_url)}" target="_blank" rel="noreferrer">${escapeHtml(member.display_name || `Member ${member.member_id}`)}</a>`
+            : escapeHtml(member.display_name || `Member ${member.member_id}`)}
+        </div>
+        <div class="row-meta">
+          Member ${escapeHtml(member.member_id)}
+          ${member.group_title ? ` | ${escapeHtml(member.group_title)}` : ""}
+          ${member.country ? ` | ${escapeHtml(member.country)}` : ""}
+          ${member.active_posts ? ` | ${fmt(member.active_posts)} posts` : ""}
+          ${member.profile_views ? ` | ${fmt(member.profile_views)} profile views` : ""}
+          <br>
+          ${fmt(member.snapshots_seen)} snapshots | latest ${escapeHtml(dateText(member.latest_activity_utc))}
+        </div>
       </div>
       <div class="count">${fmt(member.observations)}</div>
     </article>

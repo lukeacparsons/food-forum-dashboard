@@ -36,6 +36,13 @@ type ActiveNowRow = {
 
 type MemberRow = {
   member_id: number;
+  display_name: string | null;
+  profile_url: string | null;
+  photo_url: string | null;
+  group_title: string | null;
+  country: string | null;
+  active_posts: number | null;
+  profile_views: number | null;
   observations: number;
   snapshots_seen: number;
   latest_activity_utc: string | null;
@@ -162,17 +169,35 @@ export async function getMemberVisits(config: AppConfig, rangeHoursValue: unknow
   const rangeHours = limitValue(rangeHoursValue, 24, MAX_ACTIVITY_RANGE_HOURS);
   const cutoff = cutoffIso(rangeHours);
   const rows = await sqliteJson<MemberRow>(config, config.IFSQN_DB_PATH, `
+    WITH visits AS (
+      SELECT
+        e.member_id,
+        MAX(NULLIF(e.actor_name, '')) AS actor_name,
+        COUNT(*) AS observations,
+        COUNT(DISTINCT e.snapshot_id) AS snapshots_seen,
+        MAX(e.activity_at_utc) AS latest_activity_utc
+      FROM online_activity_events e
+      JOIN online_activity_snapshots s ON s.snapshot_id = e.snapshot_id
+      WHERE s.status = 'completed'
+        AND s.completed_at >= ${sqlLiteral(cutoff)}
+        AND e.member_id IS NOT NULL
+      GROUP BY e.member_id
+    )
     SELECT
-      e.member_id,
-      COUNT(*) AS observations,
-      COUNT(DISTINCT e.snapshot_id) AS snapshots_seen,
-      MAX(e.activity_at_utc) AS latest_activity_utc
-    FROM online_activity_events e
-    JOIN online_activity_snapshots s ON s.snapshot_id = e.snapshot_id
-    WHERE s.status = 'completed'
-      AND s.completed_at >= ${sqlLiteral(cutoff)}
-      AND e.member_id IS NOT NULL
-    GROUP BY e.member_id
+      v.member_id,
+      COALESCE(mp.display_name, md.display_name, v.actor_name) AS display_name,
+      COALESCE(mp.profile_url, md.profile_url) AS profile_url,
+      COALESCE(mp.photo_url, md.photo_url) AS photo_url,
+      COALESCE(mp.group_title, md.group_title) AS group_title,
+      mp.country,
+      COALESCE(mp.active_posts, md.post_count) AS active_posts,
+      mp.profile_views,
+      v.observations,
+      v.snapshots_seen,
+      v.latest_activity_utc
+    FROM visits v
+    LEFT JOIN member_profiles mp ON mp.member_id = v.member_id
+    LEFT JOIN members_directory md ON md.member_id = v.member_id
     ORDER BY observations DESC
     LIMIT 100
   `);
