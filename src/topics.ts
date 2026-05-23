@@ -46,6 +46,24 @@ function topicSql(corpus: CorpusName, topicId: number): string {
   `;
 }
 
+function postsSql(corpus: CorpusName, topicId: number): string {
+  const postUrlExpr = corpus === "ifsqn" ? "post_url" : "source_url AS post_url";
+  return `
+    SELECT
+      post_id,
+      post_no,
+      author_name,
+      posted_at,
+      source_url,
+      ${postUrlExpr},
+      text
+    FROM posts
+    WHERE topic_id = ${sqlLiteral(topicId)}
+    ORDER BY post_no, post_id
+    LIMIT 300
+  `;
+}
+
 export async function getTopic(config: AppConfig, corpusName: CorpusName, topicId: number) {
   const corpus = getCorpora(config, corpusName)[0];
   if (!corpus) {
@@ -53,20 +71,7 @@ export async function getTopic(config: AppConfig, corpusName: CorpusName, topicI
   }
 
   const topic = await sqliteOne<TopicRow>(config, corpus.dbPath, topicSql(corpus.name, topicId));
-  const posts = await sqliteJson<PostRow>(config, corpus.dbPath, `
-    SELECT
-      post_id,
-      post_no,
-      author_name,
-      posted_at,
-      source_url,
-      post_url,
-      text
-    FROM posts
-    WHERE topic_id = ${sqlLiteral(topicId)}
-    ORDER BY post_no, post_id
-    LIMIT 300
-  `);
+  const posts = await sqliteJson<PostRow>(config, corpus.dbPath, postsSql(corpus.name, topicId));
 
   return { corpus: corpus.name, topic, posts };
 }
