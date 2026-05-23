@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Food Forum Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Food Forum Dashboard</h1>
+        <p id="health-line">Checking data sources...</p>
+      </div>
+      <div class="toolbar">
+        <button id="refresh-btn" type="button">Refresh</button>
+        <a class="button-link" href="https://ifsqn-kb-mcp.candit.net/health" target="_blank" rel="noreferrer">MCP Health</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="metrics-grid" aria-label="Online activity summary">
+        <div class="metric">
+          <span class="label">Observed rows</span>
+          <strong id="metric-events">-</strong>
+        </div>
+        <div class="metric">
+          <span class="label">Unique members</span>
+          <strong id="metric-members">-</strong>
+        </div>
+        <div class="metric">
+          <span class="label">Topics observed</span>
+          <strong id="metric-topics">-</strong>
+        </div>
+        <div class="metric">
+          <span class="label">Snapshots</span>
+          <strong id="metric-snapshots">-</strong>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="filters" aria-label="Controls">
+          <div class="filter-group">
+            <label for="range-hours">Activity range</label>
+            <select id="range-hours">
+              <option value="6">6 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24" selected>24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="168">7 days</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="search-query">Post search</label>
+            <input id="search-query" type="search" placeholder="supplier certificates, COA allergen..." autocomplete="off">
+          </div>
+
+          <div class="segmented" role="group" aria-label="Search mode">
+            <button class="segment active" type="button" data-mode="hybrid">Hybrid</button>
+            <button class="segment" type="button" data-mode="keyword">Keyword</button>
+            <button class="segment" type="button" data-mode="vector">Vector</button>
+          </div>
+
+          <div class="filter-group">
+            <label for="corpus">Corpus</label>
+            <select id="corpus">
+              <option value="both" selected>Both</option>
+              <option value="ifsqn">IFSQN</option>
+              <option value="elsmar">Elsmar</option>
+            </select>
+          </div>
+
+          <div class="filter-row">
+            <div class="filter-group">
+              <label for="result-limit">Results</label>
+              <input id="result-limit" type="number" min="5" max="50" value="15">
+            </div>
+            <div class="filter-group">
+              <label for="candidate-limit">Candidates</label>
+              <input id="candidate-limit" type="number" min="10" max="200" value="60">
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label for="topic-filter">Topic ID</label>
+            <input id="topic-filter" type="number" min="1" placeholder="optional">
+          </div>
+
+          <button id="search-btn" type="button">Run Search</button>
+        </aside>
+
+        <section class="content">
+          <nav class="tabs" aria-label="Dashboard views">
+            <button class="tab active" type="button" data-view="activity">Online Activity</button>
+            <button class="tab" type="button" data-view="search">Post Search</button>
+            <button class="tab" type="button" data-view="topic">Topic Detail</button>
+          </nav>
+
+          <section id="view-activity" class="view active">
+            <div class="split">
+              <section>
+                <div class="section-heading">
+                  <h2>Ranked Topics</h2>
+                  <select id="activity-sort" aria-label="Sort online activity">
+                    <option value="observations">Most observed</option>
+                    <option value="latest">Latest activity</option>
+                  </select>
+                </div>
+                <div id="activity-list" class="list"></div>
+              </section>
+              <section>
+                <div class="section-heading">
+                  <h2>Active Now</h2>
+                </div>
+                <div id="active-now-list" class="list compact"></div>
+                <div class="section-heading lower">
+                  <h2>Member Visits</h2>
+                </div>
+                <div id="member-list" class="list compact"></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="view-search" class="view">
+            <div class="section-heading">
+              <h2>Search Results</h2>
+              <span id="search-status" class="status-text">Enter a query and run search.</span>
+            </div>
+            <div id="search-results" class="results"></div>
+          </section>
+
+          <section id="view-topic" class="view">
+            <div class="section-heading">
+              <h2 id="topic-title">Topic Detail</h2>
+              <a id="topic-source" class="source-link hidden" target="_blank" rel="noreferrer">Open source</a>
+            </div>
+            <div id="topic-meta" class="topic-meta"></div>
+            <div id="topic-posts" class="posts"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
