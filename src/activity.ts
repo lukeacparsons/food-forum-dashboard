@@ -41,6 +41,8 @@ type MemberRow = {
   latest_activity_utc: string | null;
 };
 
+const MAX_ACTIVITY_RANGE_HOURS = 24 * 180;
+
 function cutoffIso(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString().replace(".000Z", "+00:00");
 }
@@ -54,7 +56,7 @@ function limitValue(value: unknown, fallback: number, max: number): number {
 }
 
 export async function getActivityOverview(config: AppConfig, rangeHoursValue: unknown) {
-  const rangeHours = limitValue(rangeHoursValue, 24, 24 * 14);
+  const rangeHours = limitValue(rangeHoursValue, 24, MAX_ACTIVITY_RANGE_HOURS);
   const cutoff = cutoffIso(rangeHours);
   const row = await sqliteOne<OverviewRow>(config, config.IFSQN_DB_PATH, `
     SELECT
@@ -89,7 +91,7 @@ export async function getActivityOverview(config: AppConfig, rangeHoursValue: un
 }
 
 export async function getActivityTopics(config: AppConfig, query: Record<string, unknown>) {
-  const rangeHours = limitValue(query.rangeHours, 24, 24 * 14);
+  const rangeHours = limitValue(query.rangeHours, 24, MAX_ACTIVITY_RANGE_HOURS);
   const limit = limitValue(query.limit, 25, 100);
   const cutoff = cutoffIso(rangeHours);
   const sort = query.sort === "latest" ? "latest_activity_utc DESC" : "observations DESC";
@@ -157,7 +159,7 @@ export async function getActiveNow(config: AppConfig) {
 }
 
 export async function getMemberVisits(config: AppConfig, rangeHoursValue: unknown) {
-  const rangeHours = limitValue(rangeHoursValue, 24, 24 * 14);
+  const rangeHours = limitValue(rangeHoursValue, 24, MAX_ACTIVITY_RANGE_HOURS);
   const cutoff = cutoffIso(rangeHours);
   const rows = await sqliteJson<MemberRow>(config, config.IFSQN_DB_PATH, `
     SELECT
