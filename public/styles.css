@@ -540,6 +540,53 @@ select {
   font-size: 22px;
 }
 
+.retention-table {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.retention-row {
+  display: grid;
+  grid-template-columns: 64px minmax(120px, 1fr) 100px 100px 70px;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.retention-row.header {
+  min-height: 30px;
+  background: #f7f9fb;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.retention-row span:not(.retention-bar-track):not(.retention-bar) {
+  min-width: 0;
+}
+
+.retention-bar-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8eef2;
+}
+
+.retention-bar {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--ok);
+}
+
 .hidden {
   display: none;
 }
@@ -561,6 +608,12 @@ select {
 
   .mini-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .retention-row {
+    grid-template-columns: 54px minmax(90px, 1fr) 78px 78px 58px;
+    gap: 7px;
+    font-size: 12px;
   }
 
   .filters {
@@ -591,5 +644,12 @@ select {
 
   .mini-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .retention-row {
+    grid-template-columns: 48px minmax(70px, 1fr) 52px 56px 46px;
+    gap: 5px;
+    padding-inline: 7px;
+    font-size: 11px;
   }
 }

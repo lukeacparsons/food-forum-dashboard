@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, corpusAvailability, getCorpora } from "./config.js";
 import { getActiveNow, getActivityOverview, getActivityTopics, getMemberVisits } from "./activity.js";
-import { getIfsqnGrowth, getIfsqnMemberGrowth } from "./growth.js";
+import { getIfsqnGrowth, getIfsqnMemberGrowth, getIfsqnMemberRetention } from "./growth.js";
 import { parseSearchInput, searchPosts } from "./search.js";
 import { getTopic } from "./topics.js";
 
@@ -66,6 +66,10 @@ app.get("/api/ifsqn/growth", asyncRoute(async (req, res) => {
 
 app.get("/api/ifsqn/member-growth", asyncRoute(async (req, res) => {
   res.json(await getIfsqnMemberGrowth(config, req.query.rangeDays));
+}));
+
+app.get("/api/ifsqn/member-retention", asyncRoute(async (_req, res) => {
+  res.json(await getIfsqnMemberRetention(config));
 }));
 
 app.get("/api/search", asyncRoute(async (req, res) => {

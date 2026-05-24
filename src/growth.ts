@@ -33,9 +33,72 @@ type MemberGrowthSummary = {
   avg_new_members_7d: number;
 };
 
+type MemberRetentionCohort = {
+  signup_year: number;
+  cohort_size: number;
+  active_members: number;
+  active_pct: number;
+};
+
+type MemberRetentionSummary = {
+  latest_activity_date: string | null;
+  active_since_date: string | null;
+  cohort_count: number;
+  total_members: number;
+  members_with_activity_date: number;
+  active_members: number;
+  overall_active_pct: number;
+};
+
 const MAX_RANGE_DAYS = 365 * 30;
 const MOVING_AVERAGE_DAYS = 30;
 const MEMBER_MOVING_AVERAGE_DAYS = 7;
+
+const PARSED_MEMBER_JOINED_DATE = `
+  date(
+    substr(member_since_text, 8, 4) || '-' ||
+    CASE substr(member_since_text, 4, 3)
+      WHEN 'Jan' THEN '01'
+      WHEN 'Feb' THEN '02'
+      WHEN 'Mar' THEN '03'
+      WHEN 'Apr' THEN '04'
+      WHEN 'May' THEN '05'
+      WHEN 'Jun' THEN '06'
+      WHEN 'Jul' THEN '07'
+      WHEN 'Aug' THEN '08'
+      WHEN 'Sep' THEN '09'
+      WHEN 'Oct' THEN '10'
+      WHEN 'Nov' THEN '11'
+      WHEN 'Dec' THEN '12'
+    END || '-' ||
+    substr(member_since_text, 1, 2)
+  )
+`;
+
+const PARSED_MEMBER_LAST_ACTIVE_DATE = `
+  CASE
+    WHEN last_active_text LIKE 'Last Active Today,%' THEN date(fetched_at)
+    WHEN last_active_text LIKE 'Last Active Yesterday,%' THEN date(fetched_at, '-1 day')
+    WHEN last_active_text LIKE 'Last Active ___ __ ____ __:__ __' THEN date(
+      substr(last_active_text, 20, 4) || '-' ||
+      CASE substr(last_active_text, 13, 3)
+        WHEN 'Jan' THEN '01'
+        WHEN 'Feb' THEN '02'
+        WHEN 'Mar' THEN '03'
+        WHEN 'Apr' THEN '04'
+        WHEN 'May' THEN '05'
+        WHEN 'Jun' THEN '06'
+        WHEN 'Jul' THEN '07'
+        WHEN 'Aug' THEN '08'
+        WHEN 'Sep' THEN '09'
+        WHEN 'Oct' THEN '10'
+        WHEN 'Nov' THEN '11'
+        WHEN 'Dec' THEN '12'
+      END || '-' ||
+      substr(last_active_text, 17, 2)
+    )
+  END
+`;
 
 function rangeDays(value: unknown): number | null {
   if (value === "all" || value === undefined || value === null || value === "") {
@@ -171,29 +234,9 @@ export async function getIfsqnGrowth(config: AppConfig, rangeDaysValue: unknown)
 
 export async function getIfsqnMemberGrowth(config: AppConfig, rangeDaysValue: unknown) {
   const days = rangeDays(rangeDaysValue);
-  const parsedMemberDate = `
-    date(
-      substr(member_since_text, 8, 4) || '-' ||
-      CASE substr(member_since_text, 4, 3)
-        WHEN 'Jan' THEN '01'
-        WHEN 'Feb' THEN '02'
-        WHEN 'Mar' THEN '03'
-        WHEN 'Apr' THEN '04'
-        WHEN 'May' THEN '05'
-        WHEN 'Jun' THEN '06'
-        WHEN 'Jul' THEN '07'
-        WHEN 'Aug' THEN '08'
-        WHEN 'Sep' THEN '09'
-        WHEN 'Oct' THEN '10'
-        WHEN 'Nov' THEN '11'
-        WHEN 'Dec' THEN '12'
-      END || '-' ||
-      substr(member_since_text, 1, 2)
-    )
-  `;
   const dateBounds = await sqliteOne<{ min_date: string | null; max_date: string | null }>(config, config.IFSQN_DB_PATH, `
     WITH parsed_members AS (
-      SELECT ${parsedMemberDate} AS joined_date
+      SELECT ${PARSED_MEMBER_JOINED_DATE} AS joined_date
       FROM member_profiles
       WHERE member_since_text IS NOT NULL
         AND member_since_text != ''
@@ -237,7 +280,7 @@ export async function getIfsqnMemberGrowth(config: AppConfig, rangeDaysValue: un
       WHERE day < ${endDate}
     ),
     parsed_members AS (
-      SELECT ${parsedMemberDate} AS joined_date
+      SELECT ${PARSED_MEMBER_JOINED_DATE} AS joined_date
       FROM member_profiles
       WHERE member_since_text IS NOT NULL
         AND member_since_text != ''
@@ -290,5 +333,82 @@ export async function getIfsqnMemberGrowth(config: AppConfig, rangeDaysValue: un
     moving_average_days: MEMBER_MOVING_AVERAGE_DAYS,
     summary,
     series,
+  };
+}
+
+export async function getIfsqnMemberRetention(config: AppConfig) {
+  const cohorts = await sqliteJson<MemberRetentionCohort>(config, config.IFSQN_DB_PATH, `
+    WITH parsed_members AS (
+      SELECT
+        CAST(strftime('%Y', ${PARSED_MEMBER_JOINED_DATE}) AS INTEGER) AS signup_year,
+        ${PARSED_MEMBER_JOINED_DATE} AS joined_date,
+        ${PARSED_MEMBER_LAST_ACTIVE_DATE} AS last_active_date
+      FROM member_profiles
+      WHERE member_since_text IS NOT NULL
+        AND member_since_text != ''
+    ),
+    bounds AS (
+      SELECT
+        MAX(last_active_date) AS latest_activity_date,
+        date(MAX(last_active_date), '-3 months') AS active_since_date
+      FROM parsed_members
+      WHERE last_active_date IS NOT NULL
+    )
+    SELECT
+      p.signup_year,
+      COUNT(*) AS cohort_size,
+      SUM(CASE WHEN p.last_active_date >= b.active_since_date THEN 1 ELSE 0 END) AS active_members,
+      ROUND(100.0 * SUM(CASE WHEN p.last_active_date >= b.active_since_date THEN 1 ELSE 0 END) / COUNT(*), 1) AS active_pct
+    FROM parsed_members p
+      CROSS JOIN bounds b
+    WHERE p.joined_date IS NOT NULL
+      AND p.signup_year IS NOT NULL
+    GROUP BY p.signup_year
+    ORDER BY p.signup_year DESC
+  `, 60_000);
+
+  const summary = await sqliteOne<MemberRetentionSummary>(config, config.IFSQN_DB_PATH, `
+    WITH parsed_members AS (
+      SELECT
+        CAST(strftime('%Y', ${PARSED_MEMBER_JOINED_DATE}) AS INTEGER) AS signup_year,
+        ${PARSED_MEMBER_JOINED_DATE} AS joined_date,
+        ${PARSED_MEMBER_LAST_ACTIVE_DATE} AS last_active_date
+      FROM member_profiles
+      WHERE member_since_text IS NOT NULL
+        AND member_since_text != ''
+    ),
+    bounds AS (
+      SELECT
+        MAX(last_active_date) AS latest_activity_date,
+        date(MAX(last_active_date), '-3 months') AS active_since_date
+      FROM parsed_members
+      WHERE last_active_date IS NOT NULL
+    )
+    SELECT
+      b.latest_activity_date,
+      b.active_since_date,
+      COUNT(DISTINCT p.signup_year) AS cohort_count,
+      COUNT(*) AS total_members,
+      SUM(CASE WHEN p.last_active_date IS NOT NULL THEN 1 ELSE 0 END) AS members_with_activity_date,
+      SUM(CASE WHEN p.last_active_date >= b.active_since_date THEN 1 ELSE 0 END) AS active_members,
+      ROUND(100.0 * SUM(CASE WHEN p.last_active_date >= b.active_since_date THEN 1 ELSE 0 END) / COUNT(*), 1) AS overall_active_pct
+    FROM parsed_members p
+      CROSS JOIN bounds b
+    WHERE p.joined_date IS NOT NULL
+      AND p.signup_year IS NOT NULL
+  `, 60_000);
+
+  return {
+    active_window_months: 3,
+    summary: summary ?? {
+      latest_activity_date: null,
+      active_since_date: null,
+      cohort_count: 0,
+      total_members: 0,
+      members_with_activity_date: 0,
+      active_members: 0,
+      overall_active_pct: 0,
+    },
+    cohorts,
   };
 }

@@ -6,6 +6,7 @@ const state = {
   growthChart: null,
   memberGrowth: null,
   memberGrowthChart: null,
+  memberRetention: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -369,11 +370,65 @@ function renderMemberGrowthChart(payload) {
   svg.onpointerleave = clearMemberGrowthHover;
 }
 
+function renderMemberRetention(payload) {
+  state.memberRetention = payload;
+  const summary = payload.summary || {};
+  const cohorts = payload.cohorts || [];
+  if (cohorts.length === 0) {
+    $("#member-retention-summary").textContent = "No signup cohorts found.";
+    $("#member-retention-stat-grid").innerHTML = "";
+    $("#member-retention-table").innerHTML = "";
+    return;
+  }
+
+  $("#member-retention-summary").textContent = `${summary.active_since_date} to ${summary.latest_activity_date} | active in trailing ${fmt(payload.active_window_months)} months`;
+  $("#member-retention-stat-grid").innerHTML = `
+    <div class="mini-metric">
+      <span>Total members</span>
+      <strong>${fmt(summary.total_members)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Active members</span>
+      <strong>${fmt(summary.active_members)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Overall active %</span>
+      <strong>${fmtFixed(summary.overall_active_pct)}%</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Signup cohorts</span>
+      <strong>${fmt(summary.cohort_count)}</strong>
+    </div>
+  `;
+  $("#member-retention-table").innerHTML = `
+    <div class="retention-row header">
+      <span>Year</span>
+      <span>Active %</span>
+      <span>Active</span>
+      <span>Cohort</span>
+      <span>Rate</span>
+    </div>
+    ${cohorts.map((cohort) => {
+      const pct = Number(cohort.active_pct || 0);
+      return `
+        <div class="retention-row">
+          <span>${escapeHtml(cohort.signup_year)}</span>
+          <span class="retention-bar-track"><span class="retention-bar" style="width: ${Math.max(0, Math.min(100, pct))}%"></span></span>
+          <span>${fmt(cohort.active_members)}</span>
+          <span>${fmt(cohort.cohort_size)}</span>
+          <span>${fmtFixed(pct)}%</span>
+        </div>
+      `;
+    }).join("")}
+  `;
+}
+
 async function loadGrowth() {
   const range = $("#growth-range").value;
-  const [payload, memberPayload] = await Promise.all([
+  const [payload, memberPayload, retentionPayload] = await Promise.all([
     getJson(`/api/ifsqn/growth?rangeDays=${encodeURIComponent(range)}`),
     getJson(`/api/ifsqn/member-growth?rangeDays=${encodeURIComponent(range)}`),
+    getJson("/api/ifsqn/member-retention"),
   ]);
   const summary = payload.summary;
   $("#growth-summary").textContent = `${summary.first_date} to ${summary.last_date} | 30-day moving average shown`;
@@ -418,6 +473,7 @@ async function loadGrowth() {
     </div>
   `;
   renderMemberGrowthChart(memberPayload);
+  renderMemberRetention(retentionPayload);
 }
 
 function searchUrl() {
