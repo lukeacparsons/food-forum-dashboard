@@ -19,8 +19,23 @@ type GrowthSummary = {
   avg_posts_30d: number;
 };
 
+type MemberGrowthPoint = {
+  date: string;
+  new_members: number;
+  new_members_ma7: number;
+};
+
+type MemberGrowthSummary = {
+  first_date: string | null;
+  last_date: string | null;
+  days: number;
+  total_new_members: number;
+  avg_new_members_7d: number;
+};
+
 const MAX_RANGE_DAYS = 365 * 30;
 const MOVING_AVERAGE_DAYS = 30;
+const MEMBER_MOVING_AVERAGE_DAYS = 7;
 
 function rangeDays(value: unknown): number | null {
   if (value === "all" || value === undefined || value === null || value === "") {
@@ -149,6 +164,130 @@ export async function getIfsqnGrowth(config: AppConfig, rangeDaysValue: unknown)
   return {
     range_days: days ?? "all",
     moving_average_days: MOVING_AVERAGE_DAYS,
+    summary,
+    series,
+  };
+}
+
+export async function getIfsqnMemberGrowth(config: AppConfig, rangeDaysValue: unknown) {
+  const days = rangeDays(rangeDaysValue);
+  const parsedMemberDate = `
+    date(
+      substr(member_since_text, 8, 4) || '-' ||
+      CASE substr(member_since_text, 4, 3)
+        WHEN 'Jan' THEN '01'
+        WHEN 'Feb' THEN '02'
+        WHEN 'Mar' THEN '03'
+        WHEN 'Apr' THEN '04'
+        WHEN 'May' THEN '05'
+        WHEN 'Jun' THEN '06'
+        WHEN 'Jul' THEN '07'
+        WHEN 'Aug' THEN '08'
+        WHEN 'Sep' THEN '09'
+        WHEN 'Oct' THEN '10'
+        WHEN 'Nov' THEN '11'
+        WHEN 'Dec' THEN '12'
+      END || '-' ||
+      substr(member_since_text, 1, 2)
+    )
+  `;
+  const dateBounds = await sqliteOne<{ min_date: string | null; max_date: string | null }>(config, config.IFSQN_DB_PATH, `
+    WITH parsed_members AS (
+      SELECT ${parsedMemberDate} AS joined_date
+      FROM member_profiles
+      WHERE member_since_text IS NOT NULL
+        AND member_since_text != ''
+    )
+    SELECT
+      MIN(joined_date) AS min_date,
+      MAX(joined_date) AS max_date
+    FROM parsed_members
+    WHERE joined_date IS NOT NULL
+  `);
+
+  if (!dateBounds?.min_date || !dateBounds.max_date) {
+    return {
+      range_days: days ?? "all",
+      moving_average_days: MEMBER_MOVING_AVERAGE_DAYS,
+      summary: {
+        first_date: null,
+        last_date: null,
+        days: 0,
+        total_new_members: 0,
+        avg_new_members_7d: 0,
+      },
+      series: [],
+    };
+  }
+
+  const displayStartDate = days
+    ? `MAX(${sqlLiteral(dateBounds.min_date)}, date(${sqlLiteral(dateBounds.max_date)}, '-${days - 1} days'))`
+    : sqlLiteral(dateBounds.min_date);
+  const calculationStartDate = days
+    ? `MAX(${sqlLiteral(dateBounds.min_date)}, date(${sqlLiteral(dateBounds.max_date)}, '-${days + MEMBER_MOVING_AVERAGE_DAYS - 2} days'))`
+    : sqlLiteral(dateBounds.min_date);
+  const endDate = sqlLiteral(dateBounds.max_date);
+
+  const series = await sqliteJson<MemberGrowthPoint>(config, config.IFSQN_DB_PATH, `
+    WITH RECURSIVE dates(day) AS (
+      SELECT ${calculationStartDate}
+      UNION ALL
+      SELECT date(day, '+1 day')
+      FROM dates
+      WHERE day < ${endDate}
+    ),
+    parsed_members AS (
+      SELECT ${parsedMemberDate} AS joined_date
+      FROM member_profiles
+      WHERE member_since_text IS NOT NULL
+        AND member_since_text != ''
+    ),
+    daily_members AS (
+      SELECT joined_date AS day, COUNT(*) AS new_members
+      FROM parsed_members
+      WHERE joined_date BETWEEN (SELECT MIN(day) FROM dates) AND ${endDate}
+      GROUP BY joined_date
+    ),
+    daily AS (
+      SELECT
+        d.day AS date,
+        COALESCE(m.new_members, 0) AS new_members
+      FROM dates d
+        LEFT JOIN daily_members m ON m.day = d.day
+    ),
+    with_moving_average AS (
+      SELECT
+        date,
+        new_members,
+        ROUND(AVG(new_members) OVER (ORDER BY date ROWS BETWEEN ${MEMBER_MOVING_AVERAGE_DAYS - 1} PRECEDING AND CURRENT ROW), 3) AS new_members_ma7
+      FROM daily
+    )
+    SELECT
+      date,
+      new_members,
+      new_members_ma7
+    FROM with_moving_average
+    WHERE date >= ${displayStartDate}
+    ORDER BY date
+  `, 60_000);
+
+  const summary = series.reduce<MemberGrowthSummary>((acc, point) => ({
+    first_date: acc.first_date ?? point.date,
+    last_date: point.date,
+    days: acc.days + 1,
+    total_new_members: acc.total_new_members + Number(point.new_members || 0),
+    avg_new_members_7d: Number(point.new_members_ma7 || 0),
+  }), {
+    first_date: null,
+    last_date: null,
+    days: 0,
+    total_new_members: 0,
+    avg_new_members_7d: 0,
+  });
+
+  return {
+    range_days: days ?? "all",
+    moving_average_days: MEMBER_MOVING_AVERAGE_DAYS,
     summary,
     series,
   };

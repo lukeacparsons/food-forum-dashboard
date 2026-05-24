@@ -375,6 +375,10 @@ select {
   overflow: hidden;
 }
 
+.chart-wrap.compact-chart {
+  height: 330px;
+}
+
 .chart {
   display: block;
   width: 100%;
@@ -412,6 +416,12 @@ select {
   background: var(--accent);
 }
 
+.chart-line.members,
+.legend-line.members {
+  stroke: var(--ok);
+  background: var(--ok);
+}
+
 .chart-hit-area {
   fill: transparent;
   cursor: crosshair;
@@ -439,6 +449,10 @@ select {
 
 .chart-point.topics {
   stroke: var(--accent-2);
+}
+
+.chart-point.members {
+  stroke: var(--ok);
 }
 
 .growth-tooltip {

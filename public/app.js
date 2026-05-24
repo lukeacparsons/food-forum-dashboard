@@ -4,6 +4,8 @@ const state = {
   lastTopic: null,
   growth: null,
   growthChart: null,
+  memberGrowth: null,
+  memberGrowthChart: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -178,13 +180,13 @@ function setGrowthHover(index) {
   tooltip.innerHTML = `
     <strong>${escapeHtml(dateFull(point.date))}</strong>
     <dl>
-      <dt>Posts/day, 30d avg</dt>
+      <dt>Plotted posts/day, 30d avg</dt>
       <dd>${fmtFixed(point.posts_ma30)}</dd>
-      <dt>Topics/day, 30d avg</dt>
+      <dt>Plotted topics/day, 30d avg</dt>
       <dd>${fmtFixed(point.new_topics_ma30)}</dd>
-      <dt>Posts that day</dt>
+      <dt>Raw posts that day</dt>
       <dd>${fmt(point.posts)}</dd>
-      <dt>New topics that day</dt>
+      <dt>Raw new topics that day</dt>
       <dd>${fmt(point.new_topics)}</dd>
     </dl>
   `;
@@ -196,6 +198,48 @@ function clearGrowthHover() {
   $("#growth-tooltip")?.classList.add("hidden");
 }
 
+function setMemberGrowthHover(index) {
+  const meta = state.memberGrowthChart;
+  if (!meta) return;
+
+  const point = meta.points[index];
+  const svg = $("#member-growth-chart");
+  const tooltip = $("#member-growth-tooltip");
+  const crosshair = svg.querySelector("#member-growth-crosshair");
+  if (!point || !tooltip || !crosshair) return;
+
+  const x = meta.xScale(index);
+  const y = meta.yMembers(Number(point.new_members_ma7 || 0));
+  crosshair.classList.remove("hidden");
+  crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
+  crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
+  crosshair.querySelector(".chart-point.members").setAttribute("cx", x);
+  crosshair.querySelector(".chart-point.members").setAttribute("cy", y);
+
+  const rect = svg.getBoundingClientRect();
+  const chartLeft = (x / meta.width) * rect.width;
+  const chartTop = (y / meta.height) * rect.height;
+  tooltip.style.left = `${chartLeft}px`;
+  tooltip.style.top = `${Math.max(24, Math.min(rect.height - 24, chartTop))}px`;
+  tooltip.dataset.side = x > meta.width * 0.68 ? "left" : "right";
+  tooltip.classList.remove("hidden");
+  tooltip.innerHTML = `
+    <strong>${escapeHtml(dateFull(point.date))}</strong>
+    <dl>
+      <dt>Plotted signups/day, 7d avg</dt>
+      <dd>${fmtFixed(point.new_members_ma7)}</dd>
+      <dt>Raw signups that day</dt>
+      <dd>${fmt(point.new_members)}</dd>
+    </dl>
+  `;
+}
+
+function clearMemberGrowthHover() {
+  const crosshair = $("#member-growth-chart")?.querySelector("#member-growth-crosshair");
+  crosshair?.classList.add("hidden");
+  $("#member-growth-tooltip")?.classList.add("hidden");
+}
+
 function handleGrowthPointer(event) {
   const meta = state.growthChart;
   if (!meta || meta.points.length === 0) return;
@@ -205,6 +249,17 @@ function handleGrowthPointer(event) {
   const rawIndex = Math.round(((viewX - meta.margin.left) / meta.innerWidth) * (meta.points.length - 1));
   const index = Math.max(0, Math.min(meta.points.length - 1, rawIndex));
   setGrowthHover(index);
+}
+
+function handleMemberGrowthPointer(event) {
+  const meta = state.memberGrowthChart;
+  if (!meta || meta.points.length === 0) return;
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  const viewX = ((event.clientX - rect.left) / rect.width) * meta.width;
+  const rawIndex = Math.round(((viewX - meta.margin.left) / meta.innerWidth) * (meta.points.length - 1));
+  const index = Math.max(0, Math.min(meta.points.length - 1, rawIndex));
+  setMemberGrowthHover(index);
 }
 
 function renderGrowthChart(payload) {
@@ -248,8 +303,8 @@ function renderGrowthChart(payload) {
     ${xTickIndexes.map((index) => `
       <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateShort(points[index].date))}</text>
     `).join("")}
-    <text class="axis-label" x="${margin.left}" y="14">posts/day</text>
-    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics/day</text>
+    <text class="axis-label" x="${margin.left}" y="14">posts/day, 30d avg</text>
+    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics/day, 30d avg</text>
     <path class="chart-line posts" d="${linePath(points, xScale, yPosts, "posts_ma30")}"></path>
     <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "new_topics_ma30")}"></path>
     <g id="growth-crosshair" class="chart-crosshair hidden">
@@ -264,9 +319,62 @@ function renderGrowthChart(payload) {
   svg.onpointerleave = clearGrowthHover;
 }
 
+function renderMemberGrowthChart(payload) {
+  state.memberGrowth = payload;
+  const svg = $("#member-growth-chart");
+  const points = payload.series || [];
+  if (points.length === 0) {
+    svg.innerHTML = "";
+    $("#member-growth-summary").textContent = "No dated IFSQN member signups found.";
+    $("#member-growth-stat-grid").innerHTML = "";
+    clearMemberGrowthHover();
+    return;
+  }
+
+  const width = 920;
+  const height = 320;
+  const margin = { top: 22, right: 42, bottom: 42, left: 58 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const maxMembers = Math.max(1, ...points.map((point) => Number(point.new_members_ma7 || 0)));
+  const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
+  const yMembers = (value) => margin.top + innerHeight - (value / maxMembers) * innerHeight;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const xTickIndexes = Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(ratio * (points.length - 1)))));
+
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = `
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+    ${yTicks.map((tick) => {
+      const y = margin.top + innerHeight - tick * innerHeight;
+      return `
+        <line class="grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + innerWidth}" y2="${y}"></line>
+        <text class="axis-label" x="${margin.left - 10}" y="${y + 4}" text-anchor="end">${Math.round(maxMembers * tick)}</text>
+      `;
+    }).join("")}
+    ${xTickIndexes.map((index) => `
+      <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateShort(points[index].date))}</text>
+    `).join("")}
+    <text class="axis-label" x="${margin.left}" y="14">signups/day, 7d avg</text>
+    <path class="chart-line members" d="${linePath(points, xScale, yMembers, "new_members_ma7")}"></path>
+    <g id="member-growth-crosshair" class="chart-crosshair hidden">
+      <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+      <circle class="chart-point members" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
+    </g>
+    <rect class="chart-hit-area" x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}"></rect>
+  `;
+  state.memberGrowthChart = { points, width, height, margin, innerWidth, yMembers, xScale };
+  svg.onpointermove = handleMemberGrowthPointer;
+  svg.onpointerleave = clearMemberGrowthHover;
+}
+
 async function loadGrowth() {
   const range = $("#growth-range").value;
-  const payload = await getJson(`/api/ifsqn/growth?rangeDays=${encodeURIComponent(range)}`);
+  const [payload, memberPayload] = await Promise.all([
+    getJson(`/api/ifsqn/growth?rangeDays=${encodeURIComponent(range)}`),
+    getJson(`/api/ifsqn/member-growth?rangeDays=${encodeURIComponent(range)}`),
+  ]);
   const summary = payload.summary;
   $("#growth-summary").textContent = `${summary.first_date} to ${summary.last_date} | 30-day moving average shown`;
   $("#growth-stat-grid").innerHTML = `
@@ -288,6 +396,28 @@ async function loadGrowth() {
     </div>
   `;
   renderGrowthChart(payload);
+
+  const memberSummary = memberPayload.summary;
+  $("#member-growth-summary").textContent = `${memberSummary.first_date} to ${memberSummary.last_date} | 7-day moving average shown`;
+  $("#member-growth-stat-grid").innerHTML = `
+    <div class="mini-metric">
+      <span>Total new members</span>
+      <strong>${fmt(memberSummary.total_new_members)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Current 7d signups/day</span>
+      <strong>${Number(memberSummary.avg_new_members_7d || 0).toFixed(1)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Days shown</span>
+      <strong>${fmt(memberSummary.days)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Moving window</span>
+      <strong>${fmt(memberPayload.moving_average_days)}d</strong>
+    </div>
+  `;
+  renderMemberGrowthChart(memberPayload);
 }
 
 function searchUrl() {
