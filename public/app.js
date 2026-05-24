@@ -2,6 +2,7 @@ const state = {
   mode: "hybrid",
   view: "activity",
   lastTopic: null,
+  growth: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -16,6 +17,13 @@ function dateText(value) {
   const date = new Date(String(value).replace("+00:00", "Z"));
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function dateShort(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
 function clip(value, length = 380) {
@@ -118,6 +126,85 @@ async function loadActivity() {
   `).join("");
 }
 
+function linePath(points, xScale, yScale, key) {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${xScale(index).toFixed(2)} ${yScale(Number(point[key] || 0)).toFixed(2)}`)
+    .join(" ");
+}
+
+function renderGrowthChart(payload) {
+  state.growth = payload;
+  const svg = $("#growth-chart");
+  const points = payload.series || [];
+  if (points.length === 0) {
+    svg.innerHTML = "";
+    $("#growth-summary").textContent = "No dated IFSQN posts found.";
+    $("#growth-stat-grid").innerHTML = "";
+    return;
+  }
+
+  const width = 920;
+  const height = 380;
+  const margin = { top: 22, right: 64, bottom: 42, left: 58 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const maxPosts = Math.max(1, ...points.map((point) => Number(point.posts_ma14 || 0)));
+  const maxTopics = Math.max(1, ...points.map((point) => Number(point.new_topics_ma14 || 0)));
+  const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
+  const yPosts = (value) => margin.top + innerHeight - (value / maxPosts) * innerHeight;
+  const yTopics = (value) => margin.top + innerHeight - (value / maxTopics) * innerHeight;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const xTickIndexes = Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(ratio * (points.length - 1)))));
+
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = `
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+    <line class="axis-line" x1="${margin.left + innerWidth}" y1="${margin.top}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
+    ${yTicks.map((tick) => {
+      const y = margin.top + innerHeight - tick * innerHeight;
+      return `
+        <line class="grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + innerWidth}" y2="${y}"></line>
+        <text class="axis-label" x="${margin.left - 10}" y="${y + 4}" text-anchor="end">${Math.round(maxPosts * tick)}</text>
+        <text class="axis-label" x="${margin.left + innerWidth + 10}" y="${y + 4}">${Math.round(maxTopics * tick)}</text>
+      `;
+    }).join("")}
+    ${xTickIndexes.map((index) => `
+      <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateShort(points[index].date))}</text>
+    `).join("")}
+    <text class="axis-label" x="${margin.left}" y="14">posts/day</text>
+    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics/day</text>
+    <path class="chart-line posts" d="${linePath(points, xScale, yPosts, "posts_ma14")}"></path>
+    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "new_topics_ma14")}"></path>
+  `;
+}
+
+async function loadGrowth() {
+  const range = $("#growth-range").value;
+  const payload = await getJson(`/api/ifsqn/growth?rangeDays=${encodeURIComponent(range)}`);
+  const summary = payload.summary;
+  $("#growth-summary").textContent = `${summary.first_date} to ${summary.last_date} | 14-day moving average shown`;
+  $("#growth-stat-grid").innerHTML = `
+    <div class="mini-metric">
+      <span>Total posts</span>
+      <strong>${fmt(summary.total_posts)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Total new topics</span>
+      <strong>${fmt(summary.total_new_topics)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Current 14d posts/day</span>
+      <strong>${Number(summary.avg_posts_14d || 0).toFixed(1)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Current 14d topics/day</span>
+      <strong>${Number(summary.avg_new_topics_14d || 0).toFixed(1)}</strong>
+    </div>
+  `;
+  renderGrowthChart(payload);
+}
+
 function searchUrl() {
   const params = new URLSearchParams({
     q: $("#search-query").value,
@@ -203,7 +290,7 @@ async function loadTopic(corpus, topicId) {
 }
 
 async function refreshAll() {
-  await Promise.all([loadHealth(), loadOverview(), loadActivity()]);
+  await Promise.all([loadHealth(), loadOverview(), loadActivity(), loadGrowth()]);
 }
 
 $$(".tab").forEach((button) => {
@@ -219,6 +306,7 @@ $$(".segment").forEach((button) => {
 
 $("#refresh-btn").addEventListener("click", refreshAll);
 $("#range-hours").addEventListener("change", refreshAll);
+$("#growth-range").addEventListener("change", loadGrowth);
 $("#activity-sort").addEventListener("change", loadActivity);
 $("#search-btn").addEventListener("click", runSearch);
 $("#search-query").addEventListener("keydown", (event) => {

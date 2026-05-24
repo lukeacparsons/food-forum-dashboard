@@ -72,7 +72,9 @@ h2 {
 .section-heading,
 .tabs,
 .segmented,
-.filter-row {
+.filter-row,
+.inline-control,
+.chart-legend {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -171,6 +173,14 @@ main {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.inline-control label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 input,
@@ -355,6 +365,93 @@ select {
   font-weight: 700;
 }
 
+.chart-wrap {
+  height: 430px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(#fff, #fbfcfd);
+  overflow: hidden;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.axis-line,
+.grid-line {
+  stroke: #dbe2e8;
+  stroke-width: 1;
+}
+
+.axis-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.chart-line.topics,
+.legend-line.topics {
+  stroke: var(--accent-2);
+  background: var(--accent-2);
+}
+
+.chart-line.posts,
+.legend-line.posts {
+  stroke: var(--accent);
+  background: var(--accent);
+}
+
+.chart-legend {
+  justify-content: flex-end;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 24px;
+  height: 3px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.mini-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.mini-metric {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.mini-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mini-metric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 22px;
+}
+
 .hidden {
   display: none;
 }
@@ -371,6 +468,10 @@ select {
   }
 
   .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mini-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -391,11 +492,16 @@ select {
   }
 
   .toolbar,
-  .tabs {
+  .tabs,
+  .section-heading {
     flex-wrap: wrap;
   }
 
   .row {
+    grid-template-columns: 1fr;
+  }
+
+  .mini-metrics {
     grid-template-columns: 1fr;
   }
 }
