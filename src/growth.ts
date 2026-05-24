@@ -5,8 +5,8 @@ type GrowthPoint = {
   date: string;
   new_topics: number;
   posts: number;
-  new_topics_ma14: number;
-  posts_ma14: number;
+  new_topics_ma30: number;
+  posts_ma30: number;
 };
 
 type GrowthSummary = {
@@ -15,11 +15,12 @@ type GrowthSummary = {
   days: number;
   total_new_topics: number;
   total_posts: number;
-  avg_new_topics_14d: number;
-  avg_posts_14d: number;
+  avg_new_topics_30d: number;
+  avg_posts_30d: number;
 };
 
 const MAX_RANGE_DAYS = 365 * 30;
+const MOVING_AVERAGE_DAYS = 30;
 
 function rangeDays(value: unknown): number | null {
   if (value === "all" || value === undefined || value === null || value === "") {
@@ -54,21 +55,24 @@ export async function getIfsqnGrowth(config: AppConfig, rangeDaysValue: unknown)
         days: 0,
         total_new_topics: 0,
         total_posts: 0,
-        avg_new_topics_14d: 0,
-        avg_posts_14d: 0,
+        avg_new_topics_30d: 0,
+        avg_posts_30d: 0,
       },
       series: [],
     };
   }
 
-  const startDate = days
-    ? `date(${sqlLiteral(dateBounds.max_date)}, '-${days - 1} days')`
+  const displayStartDate = days
+    ? `MAX(${sqlLiteral(dateBounds.min_date)}, date(${sqlLiteral(dateBounds.max_date)}, '-${days - 1} days'))`
+    : sqlLiteral(dateBounds.min_date);
+  const calculationStartDate = days
+    ? `MAX(${sqlLiteral(dateBounds.min_date)}, date(${sqlLiteral(dateBounds.max_date)}, '-${days + MOVING_AVERAGE_DAYS - 2} days'))`
     : sqlLiteral(dateBounds.min_date);
   const endDate = sqlLiteral(dateBounds.max_date);
 
   const series = await sqliteJson<GrowthPoint>(config, config.IFSQN_DB_PATH, `
     WITH RECURSIVE dates(day) AS (
-      SELECT ${startDate}
+      SELECT ${calculationStartDate}
       UNION ALL
       SELECT date(day, '+1 day')
       FROM dates
@@ -101,16 +105,26 @@ export async function getIfsqnGrowth(config: AppConfig, rangeDaysValue: unknown)
         COALESCE(t.new_topics, 0) AS new_topics,
         COALESCE(p.posts, 0) AS posts
       FROM dates d
-      LEFT JOIN daily_topics t ON t.day = d.day
-      LEFT JOIN daily_posts p ON p.day = d.day
+        LEFT JOIN daily_topics t ON t.day = d.day
+        LEFT JOIN daily_posts p ON p.day = d.day
+    ),
+    with_moving_average AS (
+      SELECT
+        date,
+        new_topics,
+        posts,
+        ROUND(AVG(new_topics) OVER (ORDER BY date ROWS BETWEEN ${MOVING_AVERAGE_DAYS - 1} PRECEDING AND CURRENT ROW), 3) AS new_topics_ma30,
+        ROUND(AVG(posts) OVER (ORDER BY date ROWS BETWEEN ${MOVING_AVERAGE_DAYS - 1} PRECEDING AND CURRENT ROW), 3) AS posts_ma30
+      FROM daily
     )
     SELECT
       date,
       new_topics,
       posts,
-      ROUND(AVG(new_topics) OVER (ORDER BY date ROWS BETWEEN 13 PRECEDING AND CURRENT ROW), 3) AS new_topics_ma14,
-      ROUND(AVG(posts) OVER (ORDER BY date ROWS BETWEEN 13 PRECEDING AND CURRENT ROW), 3) AS posts_ma14
-    FROM daily
+      new_topics_ma30,
+      posts_ma30
+    FROM with_moving_average
+    WHERE date >= ${displayStartDate}
     ORDER BY date
   `, 60_000);
 
@@ -120,20 +134,21 @@ export async function getIfsqnGrowth(config: AppConfig, rangeDaysValue: unknown)
     days: acc.days + 1,
     total_new_topics: acc.total_new_topics + Number(point.new_topics || 0),
     total_posts: acc.total_posts + Number(point.posts || 0),
-    avg_new_topics_14d: Number(point.new_topics_ma14 || 0),
-    avg_posts_14d: Number(point.posts_ma14 || 0),
+    avg_new_topics_30d: Number(point.new_topics_ma30 || 0),
+    avg_posts_30d: Number(point.posts_ma30 || 0),
   }), {
     first_date: null,
     last_date: null,
     days: 0,
     total_new_topics: 0,
     total_posts: 0,
-    avg_new_topics_14d: 0,
-    avg_posts_14d: 0,
+    avg_new_topics_30d: 0,
+    avg_posts_30d: 0,
   });
 
   return {
     range_days: days ?? "all",
+    moving_average_days: MOVING_AVERAGE_DAYS,
     summary,
     series,
   };

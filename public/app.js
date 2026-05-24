@@ -158,8 +158,8 @@ function setGrowthHover(index) {
   if (!point || !tooltip || !crosshair) return;
 
   const x = meta.xScale(index);
-  const yPosts = meta.yPosts(Number(point.posts_ma14 || 0));
-  const yTopics = meta.yTopics(Number(point.new_topics_ma14 || 0));
+  const yPosts = meta.yPosts(Number(point.posts_ma30 || 0));
+  const yTopics = meta.yTopics(Number(point.new_topics_ma30 || 0));
   crosshair.classList.remove("hidden");
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
@@ -178,10 +178,10 @@ function setGrowthHover(index) {
   tooltip.innerHTML = `
     <strong>${escapeHtml(dateFull(point.date))}</strong>
     <dl>
-      <dt>Posts/day, 14d avg</dt>
-      <dd>${fmtFixed(point.posts_ma14)}</dd>
-      <dt>Topics/day, 14d avg</dt>
-      <dd>${fmtFixed(point.new_topics_ma14)}</dd>
+      <dt>Posts/day, 30d avg</dt>
+      <dd>${fmtFixed(point.posts_ma30)}</dd>
+      <dt>Topics/day, 30d avg</dt>
+      <dd>${fmtFixed(point.new_topics_ma30)}</dd>
       <dt>Posts that day</dt>
       <dd>${fmt(point.posts)}</dd>
       <dt>New topics that day</dt>
@@ -224,8 +224,8 @@ function renderGrowthChart(payload) {
   const margin = { top: 22, right: 64, bottom: 42, left: 58 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
-  const maxPosts = Math.max(1, ...points.map((point) => Number(point.posts_ma14 || 0)));
-  const maxTopics = Math.max(1, ...points.map((point) => Number(point.new_topics_ma14 || 0)));
+  const maxPosts = Math.max(1, ...points.map((point) => Number(point.posts_ma30 || 0)));
+  const maxTopics = Math.max(1, ...points.map((point) => Number(point.new_topics_ma30 || 0)));
   const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
   const yPosts = (value) => margin.top + innerHeight - (value / maxPosts) * innerHeight;
   const yTopics = (value) => margin.top + innerHeight - (value / maxTopics) * innerHeight;
@@ -250,8 +250,8 @@ function renderGrowthChart(payload) {
     `).join("")}
     <text class="axis-label" x="${margin.left}" y="14">posts/day</text>
     <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics/day</text>
-    <path class="chart-line posts" d="${linePath(points, xScale, yPosts, "posts_ma14")}"></path>
-    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "new_topics_ma14")}"></path>
+    <path class="chart-line posts" d="${linePath(points, xScale, yPosts, "posts_ma30")}"></path>
+    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "new_topics_ma30")}"></path>
     <g id="growth-crosshair" class="chart-crosshair hidden">
       <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
       <circle class="chart-point posts" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
@@ -268,7 +268,7 @@ async function loadGrowth() {
   const range = $("#growth-range").value;
   const payload = await getJson(`/api/ifsqn/growth?rangeDays=${encodeURIComponent(range)}`);
   const summary = payload.summary;
-  $("#growth-summary").textContent = `${summary.first_date} to ${summary.last_date} | 14-day moving average shown`;
+  $("#growth-summary").textContent = `${summary.first_date} to ${summary.last_date} | 30-day moving average shown`;
   $("#growth-stat-grid").innerHTML = `
     <div class="mini-metric">
       <span>Total posts</span>
@@ -279,12 +279,12 @@ async function loadGrowth() {
       <strong>${fmt(summary.total_new_topics)}</strong>
     </div>
     <div class="mini-metric">
-      <span>Current 14d posts/day</span>
-      <strong>${Number(summary.avg_posts_14d || 0).toFixed(1)}</strong>
+      <span>Current 30d posts/day</span>
+      <strong>${Number(summary.avg_posts_30d || 0).toFixed(1)}</strong>
     </div>
     <div class="mini-metric">
-      <span>Current 14d topics/day</span>
-      <strong>${Number(summary.avg_new_topics_14d || 0).toFixed(1)}</strong>
+      <span>Current 30d topics/day</span>
+      <strong>${Number(summary.avg_new_topics_30d || 0).toFixed(1)}</strong>
     </div>
   `;
   renderGrowthChart(payload);
