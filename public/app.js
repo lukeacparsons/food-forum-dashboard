@@ -3,6 +3,7 @@ const state = {
   view: "activity",
   lastTopic: null,
   growth: null,
+  growthChart: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -24,6 +25,20 @@ function dateShort(value) {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
+function dateFull(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+function fmtFixed(value, digits = 1) {
+  return Number(value || 0).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  });
 }
 
 function clip(value, length = 380) {
@@ -132,6 +147,66 @@ function linePath(points, xScale, yScale, key) {
     .join(" ");
 }
 
+function setGrowthHover(index) {
+  const meta = state.growthChart;
+  if (!meta) return;
+
+  const point = meta.points[index];
+  const svg = $("#growth-chart");
+  const tooltip = $("#growth-tooltip");
+  const crosshair = svg.querySelector("#growth-crosshair");
+  if (!point || !tooltip || !crosshair) return;
+
+  const x = meta.xScale(index);
+  const yPosts = meta.yPosts(Number(point.posts_ma14 || 0));
+  const yTopics = meta.yTopics(Number(point.new_topics_ma14 || 0));
+  crosshair.classList.remove("hidden");
+  crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
+  crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
+  crosshair.querySelector(".chart-point.posts").setAttribute("cx", x);
+  crosshair.querySelector(".chart-point.posts").setAttribute("cy", yPosts);
+  crosshair.querySelector(".chart-point.topics").setAttribute("cx", x);
+  crosshair.querySelector(".chart-point.topics").setAttribute("cy", yTopics);
+
+  const rect = svg.getBoundingClientRect();
+  const chartLeft = (x / meta.width) * rect.width;
+  const chartTop = (Math.min(yPosts, yTopics) / meta.height) * rect.height;
+  tooltip.style.left = `${chartLeft}px`;
+  tooltip.style.top = `${Math.max(24, Math.min(rect.height - 24, chartTop))}px`;
+  tooltip.dataset.side = x > meta.width * 0.68 ? "left" : "right";
+  tooltip.classList.remove("hidden");
+  tooltip.innerHTML = `
+    <strong>${escapeHtml(dateFull(point.date))}</strong>
+    <dl>
+      <dt>Posts/day, 14d avg</dt>
+      <dd>${fmtFixed(point.posts_ma14)}</dd>
+      <dt>Topics/day, 14d avg</dt>
+      <dd>${fmtFixed(point.new_topics_ma14)}</dd>
+      <dt>Posts that day</dt>
+      <dd>${fmt(point.posts)}</dd>
+      <dt>New topics that day</dt>
+      <dd>${fmt(point.new_topics)}</dd>
+    </dl>
+  `;
+}
+
+function clearGrowthHover() {
+  const crosshair = $("#growth-chart")?.querySelector("#growth-crosshair");
+  crosshair?.classList.add("hidden");
+  $("#growth-tooltip")?.classList.add("hidden");
+}
+
+function handleGrowthPointer(event) {
+  const meta = state.growthChart;
+  if (!meta || meta.points.length === 0) return;
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  const viewX = ((event.clientX - rect.left) / rect.width) * meta.width;
+  const rawIndex = Math.round(((viewX - meta.margin.left) / meta.innerWidth) * (meta.points.length - 1));
+  const index = Math.max(0, Math.min(meta.points.length - 1, rawIndex));
+  setGrowthHover(index);
+}
+
 function renderGrowthChart(payload) {
   state.growth = payload;
   const svg = $("#growth-chart");
@@ -140,6 +215,7 @@ function renderGrowthChart(payload) {
     svg.innerHTML = "";
     $("#growth-summary").textContent = "No dated IFSQN posts found.";
     $("#growth-stat-grid").innerHTML = "";
+    clearGrowthHover();
     return;
   }
 
@@ -176,7 +252,16 @@ function renderGrowthChart(payload) {
     <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics/day</text>
     <path class="chart-line posts" d="${linePath(points, xScale, yPosts, "posts_ma14")}"></path>
     <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "new_topics_ma14")}"></path>
+    <g id="growth-crosshair" class="chart-crosshair hidden">
+      <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+      <circle class="chart-point posts" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
+      <circle class="chart-point topics" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
+    </g>
+    <rect class="chart-hit-area" x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}"></rect>
   `;
+  state.growthChart = { points, width, height, margin, innerWidth, yPosts, yTopics, xScale };
+  svg.onpointermove = handleGrowthPointer;
+  svg.onpointerleave = clearGrowthHover;
 }
 
 async function loadGrowth() {

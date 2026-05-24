@@ -366,6 +366,7 @@ select {
 }
 
 .chart-wrap {
+  position: relative;
   height: 430px;
   margin-top: 12px;
   border: 1px solid var(--line);
@@ -396,6 +397,7 @@ select {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.5;
+  pointer-events: none;
 }
 
 .chart-line.topics,
@@ -408,6 +410,78 @@ select {
 .legend-line.posts {
   stroke: var(--accent);
   background: var(--accent);
+}
+
+.chart-hit-area {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.chart-crosshair {
+  pointer-events: none;
+}
+
+.chart-crosshair-line {
+  stroke: #27323a;
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+  opacity: 0.42;
+}
+
+.chart-point {
+  fill: #fff;
+  stroke-width: 2.5;
+}
+
+.chart-point.posts {
+  stroke: var(--accent);
+}
+
+.chart-point.topics {
+  stroke: var(--accent-2);
+}
+
+.growth-tooltip {
+  position: absolute;
+  z-index: 3;
+  min-width: 220px;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 10px 12px;
+  border: 1px solid #cdd6df;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.98);
+  box-shadow: 0 12px 28px rgb(29 39 50 / 0.16);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  transform: translate(10px, -50%);
+}
+
+.growth-tooltip[data-side="left"] {
+  transform: translate(calc(-100% - 10px), -50%);
+}
+
+.growth-tooltip strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+
+.growth-tooltip dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  margin: 0;
+}
+
+.growth-tooltip dt {
+  color: var(--muted);
+}
+
+.growth-tooltip dd {
+  margin: 0;
+  font-weight: 720;
 }
 
 .chart-legend {
