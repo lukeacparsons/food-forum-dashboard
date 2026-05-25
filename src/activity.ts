@@ -52,9 +52,11 @@ type OnlineSnapshotRow = {
   snapshot_id: number;
   completed_at: string;
   online_users: number;
+  online_users_ma2h: number;
   members_online: number;
   guests_or_bots: number;
   topics_viewed: number;
+  topics_viewed_ma2h: number;
   distinct_members: number;
 };
 
@@ -249,20 +251,41 @@ export async function getOnlineStatus(config: AppConfig, rangeHoursValue: unknow
   const cutoff = cutoffIso(rangeHours);
 
   const series = await sqliteJson<OnlineSnapshotRow>(config, config.IFSQN_DB_PATH, `
+    WITH raw AS (
+      SELECT
+        s.snapshot_id,
+        s.completed_at,
+        COUNT(e.event_id) AS online_users,
+        SUM(CASE WHEN e.member_id IS NOT NULL THEN 1 ELSE 0 END) AS members_online,
+        SUM(CASE WHEN e.member_id IS NULL THEN 1 ELSE 0 END) AS guests_or_bots,
+        COUNT(DISTINCT e.topic_id) AS topics_viewed,
+        COUNT(DISTINCT e.member_id) AS distinct_members
+      FROM online_activity_snapshots s
+      LEFT JOIN online_activity_events e ON e.snapshot_id = s.snapshot_id
+      WHERE s.status = 'completed'
+        AND s.completed_at >= ${sqlLiteral(cutoff)}
+      GROUP BY s.snapshot_id
+    )
     SELECT
-      s.snapshot_id,
-      s.completed_at,
-      COUNT(e.event_id) AS online_users,
-      SUM(CASE WHEN e.member_id IS NOT NULL THEN 1 ELSE 0 END) AS members_online,
-      SUM(CASE WHEN e.member_id IS NULL THEN 1 ELSE 0 END) AS guests_or_bots,
-      COUNT(DISTINCT e.topic_id) AS topics_viewed,
-      COUNT(DISTINCT e.member_id) AS distinct_members
-    FROM online_activity_snapshots s
-    LEFT JOIN online_activity_events e ON e.snapshot_id = s.snapshot_id
-    WHERE s.status = 'completed'
-      AND s.completed_at >= ${sqlLiteral(cutoff)}
-    GROUP BY s.snapshot_id
-    ORDER BY s.completed_at
+      r.snapshot_id,
+      r.completed_at,
+      r.online_users,
+      ROUND((
+        SELECT AVG(r2.online_users)
+        FROM raw r2
+        WHERE julianday(r2.completed_at) BETWEEN julianday(r.completed_at) - (2.0 / 24.0) AND julianday(r.completed_at)
+      ), 1) AS online_users_ma2h,
+      r.members_online,
+      r.guests_or_bots,
+      r.topics_viewed,
+      ROUND((
+        SELECT AVG(r2.topics_viewed)
+        FROM raw r2
+        WHERE julianday(r2.completed_at) BETWEEN julianday(r.completed_at) - (2.0 / 24.0) AND julianday(r.completed_at)
+      ), 1) AS topics_viewed_ma2h,
+      r.distinct_members
+    FROM raw r
+    ORDER BY r.completed_at
   `, 60_000);
 
   const summary = await sqliteOne<OnlineSummaryRow>(config, config.IFSQN_DB_PATH, `

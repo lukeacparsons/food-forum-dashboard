@@ -261,8 +261,8 @@ function setOnlineHover(index) {
   if (!point || !tooltip || !crosshair) return;
 
   const x = meta.xScale(index);
-  const yOnline = meta.yOnline(Number(point.online_users || 0));
-  const yTopics = meta.yTopics(Number(point.topics_viewed || 0));
+  const yOnline = meta.yOnline(Number(point.online_users_ma2h || 0));
+  const yTopics = meta.yTopics(Number(point.topics_viewed_ma2h || 0));
   crosshair.classList.remove("hidden");
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
@@ -281,13 +281,17 @@ function setOnlineHover(index) {
   tooltip.innerHTML = `
     <strong>${escapeHtml(dateTimeShort(point.completed_at))}</strong>
     <dl>
-      <dt>Users online</dt>
+      <dt>Users online, 2h avg</dt>
+      <dd>${fmtFixed(point.online_users_ma2h)}</dd>
+      <dt>Topics viewed, 2h avg</dt>
+      <dd>${fmtFixed(point.topics_viewed_ma2h)}</dd>
+      <dt>Raw users online</dt>
       <dd>${fmt(point.online_users)}</dd>
       <dt>Guests/bots</dt>
       <dd>${fmt(point.guests_or_bots)}</dd>
       <dt>Members online</dt>
       <dd>${fmt(point.members_online)}</dd>
-      <dt>Topics viewed</dt>
+      <dt>Raw topics viewed</dt>
       <dd>${fmt(point.topics_viewed)}</dd>
     </dl>
   `;
@@ -529,8 +533,8 @@ function renderOnlineChart(payload) {
   const margin = { top: 22, right: 64, bottom: 42, left: 58 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
-  const maxOnline = Math.max(1, ...points.map((point) => Number(point.online_users || 0)));
-  const maxTopics = Math.max(1, ...points.map((point) => Number(point.topics_viewed || 0)));
+  const maxOnline = Math.max(1, ...points.map((point) => Number(point.online_users_ma2h || 0)));
+  const maxTopics = Math.max(1, ...points.map((point) => Number(point.topics_viewed_ma2h || 0)));
   const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
   const yOnline = (value) => margin.top + innerHeight - (value / maxOnline) * innerHeight;
   const yTopics = (value) => margin.top + innerHeight - (value / maxTopics) * innerHeight;
@@ -553,10 +557,10 @@ function renderOnlineChart(payload) {
     ${xTickIndexes.map((index) => `
       <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateTimeShort(points[index].completed_at))}</text>
     `).join("")}
-    <text class="axis-label" x="${margin.left}" y="14">users online</text>
-    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics viewed</text>
-    <path class="chart-line online" d="${linePath(points, xScale, yOnline, "online_users")}"></path>
-    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "topics_viewed")}"></path>
+    <text class="axis-label" x="${margin.left}" y="14">users online, 2h avg</text>
+    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics viewed, 2h avg</text>
+    <path class="chart-line online" d="${linePath(points, xScale, yOnline, "online_users_ma2h")}"></path>
+    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "topics_viewed_ma2h")}"></path>
     <g id="online-crosshair" class="chart-crosshair hidden">
       <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
       <circle class="chart-point online" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
