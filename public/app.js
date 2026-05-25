@@ -8,7 +8,7 @@ const state = {
   memberGrowthChart: null,
   memberRetention: null,
   onlineStatus: null,
-  onlineChart: null,
+  onlineCharts: {},
   onlineChartMode: "ma2h",
 };
 
@@ -67,6 +67,10 @@ function onlineChartModeConfig() {
     secondaryTopicsField: smoothed ? "topics_viewed" : "topics_viewed_ma2h",
     secondaryFormatter: smoothed ? fmt : fmtFixed,
   };
+}
+
+function onlineValueFormatter() {
+  return state.onlineChartMode === "ma2h" ? fmtFixed : fmt;
 }
 
 function clip(value, length = 380) {
@@ -266,58 +270,57 @@ function clearMemberGrowthHover() {
   $("#member-growth-tooltip")?.classList.add("hidden");
 }
 
-function setOnlineHover(index) {
-  const meta = state.onlineChart;
+function setOnlineHover(chartKey, index) {
+  const meta = state.onlineCharts[chartKey];
   if (!meta) return;
 
   const point = meta.points[index];
-  const mode = onlineChartModeConfig();
-  const svg = $("#online-chart");
-  const tooltip = $("#online-tooltip");
-  const crosshair = svg.querySelector("#online-crosshair");
+  const svg = $(meta.svgSelector);
+  const tooltip = $(meta.tooltipSelector);
+  const crosshair = svg.querySelector(`#${meta.crosshairId}`);
   if (!point || !tooltip || !crosshair) return;
 
   const x = meta.xScale(index);
-  const yOnline = meta.yOnline(Number(point[mode.onlineField] || 0));
-  const yTopics = meta.yTopics(Number(point[mode.topicsField] || 0));
+  const y = meta.yScale(Number(point[meta.field] || 0));
   crosshair.classList.remove("hidden");
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
-  crosshair.querySelector(".chart-point.online").setAttribute("cx", x);
-  crosshair.querySelector(".chart-point.online").setAttribute("cy", yOnline);
-  crosshair.querySelector(".chart-point.topics").setAttribute("cx", x);
-  crosshair.querySelector(".chart-point.topics").setAttribute("cy", yTopics);
+  crosshair.querySelector(`.chart-point.${meta.lineClass}`).setAttribute("cx", x);
+  crosshair.querySelector(`.chart-point.${meta.lineClass}`).setAttribute("cy", y);
 
   const rect = svg.getBoundingClientRect();
   const chartLeft = (x / meta.width) * rect.width;
-  const chartTop = (Math.min(yOnline, yTopics) / meta.height) * rect.height;
+  const chartTop = (y / meta.height) * rect.height;
   tooltip.style.left = `${chartLeft}px`;
   tooltip.style.top = `${Math.max(24, Math.min(rect.height - 24, chartTop))}px`;
   tooltip.dataset.side = x > meta.width * 0.68 ? "left" : "right";
   tooltip.classList.remove("hidden");
+  const formatPrimary = onlineValueFormatter();
+  const secondaryValue = meta.secondaryField ? point[meta.secondaryField] : null;
   tooltip.innerHTML = `
     <strong>${escapeHtml(dateTimeShort(point.completed_at))}</strong>
     <dl>
-      <dt>${escapeHtml(mode.onlineLabel)}</dt>
-      <dd>${state.onlineChartMode === "ma2h" ? fmtFixed(point[mode.onlineField]) : fmt(point[mode.onlineField])}</dd>
-      <dt>${escapeHtml(mode.topicsLabel)}</dt>
-      <dd>${state.onlineChartMode === "ma2h" ? fmtFixed(point[mode.topicsField]) : fmt(point[mode.topicsField])}</dd>
-      <dt>${escapeHtml(mode.secondaryOnlineLabel)}</dt>
-      <dd>${mode.secondaryFormatter(point[mode.secondaryOnlineField])}</dd>
-      <dt>${escapeHtml(mode.secondaryTopicsLabel)}</dt>
-      <dd>${mode.secondaryFormatter(point[mode.secondaryTopicsField])}</dd>
-      <dt>Guests/bots</dt>
-      <dd>${fmt(point.guests_or_bots)}</dd>
-      <dt>Members online</dt>
-      <dd>${fmt(point.members_online)}</dd>
+      <dt>${escapeHtml(meta.label)}</dt>
+      <dd>${formatPrimary(point[meta.field])}</dd>
+      ${meta.secondaryLabel ? `
+        <dt>${escapeHtml(meta.secondaryLabel)}</dt>
+        <dd>${meta.secondaryFormatter(secondaryValue)}</dd>
+      ` : ""}
+      ${chartKey === "users" ? `
+        <dt>Guests/bots</dt>
+        <dd>${fmt(point.guests_or_bots)}</dd>
+        <dt>Members online</dt>
+        <dd>${fmt(point.members_online)}</dd>
+      ` : ""}
     </dl>
   `;
 }
 
 function clearOnlineHover() {
-  const crosshair = $("#online-chart")?.querySelector("#online-crosshair");
-  crosshair?.classList.add("hidden");
-  $("#online-tooltip")?.classList.add("hidden");
+  Object.values(state.onlineCharts).forEach((meta) => {
+    $(meta.svgSelector)?.querySelector(`#${meta.crosshairId}`)?.classList.add("hidden");
+    $(meta.tooltipSelector)?.classList.add("hidden");
+  });
 }
 
 function handleGrowthPointer(event) {
@@ -343,14 +346,15 @@ function handleMemberGrowthPointer(event) {
 }
 
 function handleOnlinePointer(event) {
-  const meta = state.onlineChart;
+  const chartKey = event.currentTarget.dataset.onlineChart;
+  const meta = state.onlineCharts[chartKey];
   if (!meta || meta.points.length === 0) return;
 
   const rect = event.currentTarget.getBoundingClientRect();
   const viewX = ((event.clientX - rect.left) / rect.width) * meta.width;
   const rawIndex = Math.round(((viewX - meta.margin.left) / meta.innerWidth) * (meta.points.length - 1));
   const index = Math.max(0, Math.min(meta.points.length - 1, rawIndex));
-  setOnlineHover(index);
+  setOnlineHover(chartKey, index);
 }
 
 function renderGrowthChart(payload) {
@@ -531,13 +535,57 @@ function renderOnlineTopicRows(container, rows, mode) {
   }).join("");
 }
 
+function renderSingleOnlineChart(points, config) {
+  const svg = $(config.svgSelector);
+  if (!svg) return;
+
+  const width = 920;
+  const height = 320;
+  const margin = { top: 22, right: 24, bottom: 42, left: 58 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const maxValue = Math.max(1, ...points.map((point) => Number(point[config.field] || 0)));
+  const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
+  const yScale = (value) => margin.top + innerHeight - (value / maxValue) * innerHeight;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const xTickIndexes = Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(ratio * (points.length - 1)))));
+
+  svg.dataset.onlineChart = config.key;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = `
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+    ${yTicks.map((tick) => {
+      const y = margin.top + innerHeight - tick * innerHeight;
+      return `
+        <line class="grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + innerWidth}" y2="${y}"></line>
+        <text class="axis-label" x="${margin.left - 10}" y="${y + 4}" text-anchor="end">${Math.round(maxValue * tick)}</text>
+      `;
+    }).join("")}
+    ${xTickIndexes.map((index) => `
+      <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateTimeShort(points[index].completed_at))}</text>
+    `).join("")}
+    <text class="axis-label" x="${margin.left}" y="14">${escapeHtml(config.label.toLowerCase())}</text>
+    <path class="chart-line ${config.lineClass}" d="${linePath(points, xScale, yScale, config.field)}"></path>
+    <g id="${config.crosshairId}" class="chart-crosshair hidden">
+      <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+      <circle class="chart-point ${config.lineClass}" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
+    </g>
+    <rect class="chart-hit-area" x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}"></rect>
+  `;
+
+  state.onlineCharts[config.key] = { ...config, points, width, height, margin, innerWidth, yScale, xScale };
+  svg.onpointermove = handleOnlinePointer;
+  svg.onpointerleave = clearOnlineHover;
+}
+
 function renderOnlineChart(payload) {
   state.onlineStatus = payload;
-  const svg = $("#online-chart");
   const points = payload.series || [];
   const mode = onlineChartModeConfig();
   if (points.length === 0) {
-    svg.innerHTML = "";
+    $("#online-users-chart").innerHTML = "";
+    $("#online-topics-chart").innerHTML = "";
     $("#online-summary").textContent = "No completed online activity snapshots found.";
     $("#online-stat-grid").innerHTML = "";
     $("#topics-now-list").innerHTML = "";
@@ -546,51 +594,33 @@ function renderOnlineChart(payload) {
     return;
   }
 
-  const width = 920;
-  const height = 380;
-  const margin = { top: 22, right: 64, bottom: 42, left: 58 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-  const maxOnline = Math.max(1, ...points.map((point) => Number(point[mode.onlineField] || 0)));
-  const maxTopics = Math.max(1, ...points.map((point) => Number(point[mode.topicsField] || 0)));
-  const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
-  const yOnline = (value) => margin.top + innerHeight - (value / maxOnline) * innerHeight;
-  const yTopics = (value) => margin.top + innerHeight - (value / maxTopics) * innerHeight;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
-  const xTickIndexes = Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(ratio * (points.length - 1)))));
+  $("#online-users-chart-mode").textContent = state.onlineChartMode === "ma2h" ? "2h avg" : "Raw";
+  $("#online-topics-chart-mode").textContent = state.onlineChartMode === "ma2h" ? "2h avg" : "Raw";
 
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.innerHTML = `
-    <line class="axis-line" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
-    <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
-    <line class="axis-line" x1="${margin.left + innerWidth}" y1="${margin.top}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
-    ${yTicks.map((tick) => {
-      const y = margin.top + innerHeight - tick * innerHeight;
-      return `
-        <line class="grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + innerWidth}" y2="${y}"></line>
-        <text class="axis-label" x="${margin.left - 10}" y="${y + 4}" text-anchor="end">${Math.round(maxOnline * tick)}</text>
-        <text class="axis-label" x="${margin.left + innerWidth + 10}" y="${y + 4}">${Math.round(maxTopics * tick)}</text>
-      `;
-    }).join("")}
-    ${xTickIndexes.map((index) => `
-      <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateTimeShort(points[index].completed_at))}</text>
-    `).join("")}
-    <text class="axis-label" x="${margin.left}" y="14">${escapeHtml(mode.onlineLabel.toLowerCase())}</text>
-    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">${escapeHtml(mode.topicsLabel.toLowerCase())}</text>
-    <path class="chart-line online" d="${linePath(points, xScale, yOnline, mode.onlineField)}"></path>
-    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, mode.topicsField)}"></path>
-    <g id="online-crosshair" class="chart-crosshair hidden">
-      <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
-      <circle class="chart-point online" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
-      <circle class="chart-point topics" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
-    </g>
-    <rect class="chart-hit-area" x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}"></rect>
-  `;
-  state.onlineChart = { points, width, height, margin, innerWidth, yOnline, yTopics, xScale };
-  $("#online-legend-users").textContent = mode.onlineLabel;
-  $("#online-legend-topics").textContent = mode.topicsLabel;
-  svg.onpointermove = handleOnlinePointer;
-  svg.onpointerleave = clearOnlineHover;
+  renderSingleOnlineChart(points, {
+    key: "users",
+    svgSelector: "#online-users-chart",
+    tooltipSelector: "#online-users-tooltip",
+    crosshairId: "online-users-crosshair",
+    field: mode.onlineField,
+    label: mode.onlineLabel,
+    lineClass: "online",
+    secondaryField: mode.secondaryOnlineField,
+    secondaryLabel: mode.secondaryOnlineLabel,
+    secondaryFormatter: mode.secondaryFormatter,
+  });
+  renderSingleOnlineChart(points, {
+    key: "topics",
+    svgSelector: "#online-topics-chart",
+    tooltipSelector: "#online-topics-tooltip",
+    crosshairId: "online-topics-crosshair",
+    field: mode.topicsField,
+    label: mode.topicsLabel,
+    lineClass: "topics",
+    secondaryField: mode.secondaryTopicsField,
+    secondaryLabel: mode.secondaryTopicsLabel,
+    secondaryFormatter: mode.secondaryFormatter,
+  });
 }
 
 async function loadOnlineStatus() {

@@ -141,13 +141,27 @@
               </div>
             </div>
             <div id="online-stat-grid" class="mini-metrics"></div>
-            <div class="chart-wrap">
-              <svg id="online-chart" class="chart" role="img" aria-label="Users online and topics viewed per activity snapshot"></svg>
-              <div id="online-tooltip" class="growth-tooltip hidden" role="status"></div>
-            </div>
-            <div class="chart-legend">
-              <span><i class="legend-line online"></i> <span id="online-legend-users">Users online, 2h avg</span></span>
-              <span><i class="legend-line topics"></i> <span id="online-legend-topics">Topics viewed, 2h avg</span></span>
+            <div class="online-charts">
+              <section class="online-chart-panel" aria-labelledby="online-users-chart-title">
+                <div class="chart-subhead">
+                  <h3 id="online-users-chart-title">Users Online</h3>
+                  <span id="online-users-chart-mode" class="status-text">2h avg</span>
+                </div>
+                <div class="chart-wrap compact-chart">
+                  <svg id="online-users-chart" class="chart" role="img" aria-label="Users online per activity snapshot"></svg>
+                  <div id="online-users-tooltip" class="growth-tooltip hidden" role="status"></div>
+                </div>
+              </section>
+              <section class="online-chart-panel" aria-labelledby="online-topics-chart-title">
+                <div class="chart-subhead">
+                  <h3 id="online-topics-chart-title">Topics Viewed</h3>
+                  <span id="online-topics-chart-mode" class="status-text">2h avg</span>
+                </div>
+                <div class="chart-wrap compact-chart">
+                  <svg id="online-topics-chart" class="chart" role="img" aria-label="Topics viewed per activity snapshot"></svg>
+                  <div id="online-topics-tooltip" class="growth-tooltip hidden" role="status"></div>
+                </div>
+              </section>
             </div>
 
             <div class="split lower">
