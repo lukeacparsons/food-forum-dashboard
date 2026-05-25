@@ -9,6 +9,7 @@ const state = {
   memberRetention: null,
   onlineStatus: null,
   onlineChart: null,
+  onlineChartMode: "ma2h",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -51,6 +52,21 @@ function fmtFixed(value, digits = 1) {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
   });
+}
+
+function onlineChartModeConfig() {
+  const smoothed = state.onlineChartMode === "ma2h";
+  return {
+    onlineField: smoothed ? "online_users_ma2h" : "online_users",
+    topicsField: smoothed ? "topics_viewed_ma2h" : "topics_viewed",
+    onlineLabel: smoothed ? "Users online, 2h avg" : "Users online",
+    topicsLabel: smoothed ? "Topics viewed, 2h avg" : "Topics viewed",
+    secondaryOnlineLabel: smoothed ? "Raw users online" : "Users online, 2h avg",
+    secondaryTopicsLabel: smoothed ? "Raw topics viewed" : "Topics viewed, 2h avg",
+    secondaryOnlineField: smoothed ? "online_users" : "online_users_ma2h",
+    secondaryTopicsField: smoothed ? "topics_viewed" : "topics_viewed_ma2h",
+    secondaryFormatter: smoothed ? fmt : fmtFixed,
+  };
 }
 
 function clip(value, length = 380) {
@@ -255,14 +271,15 @@ function setOnlineHover(index) {
   if (!meta) return;
 
   const point = meta.points[index];
+  const mode = onlineChartModeConfig();
   const svg = $("#online-chart");
   const tooltip = $("#online-tooltip");
   const crosshair = svg.querySelector("#online-crosshair");
   if (!point || !tooltip || !crosshair) return;
 
   const x = meta.xScale(index);
-  const yOnline = meta.yOnline(Number(point.online_users_ma2h || 0));
-  const yTopics = meta.yTopics(Number(point.topics_viewed_ma2h || 0));
+  const yOnline = meta.yOnline(Number(point[mode.onlineField] || 0));
+  const yTopics = meta.yTopics(Number(point[mode.topicsField] || 0));
   crosshair.classList.remove("hidden");
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
   crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
@@ -281,18 +298,18 @@ function setOnlineHover(index) {
   tooltip.innerHTML = `
     <strong>${escapeHtml(dateTimeShort(point.completed_at))}</strong>
     <dl>
-      <dt>Users online, 2h avg</dt>
-      <dd>${fmtFixed(point.online_users_ma2h)}</dd>
-      <dt>Topics viewed, 2h avg</dt>
-      <dd>${fmtFixed(point.topics_viewed_ma2h)}</dd>
-      <dt>Raw users online</dt>
-      <dd>${fmt(point.online_users)}</dd>
+      <dt>${escapeHtml(mode.onlineLabel)}</dt>
+      <dd>${state.onlineChartMode === "ma2h" ? fmtFixed(point[mode.onlineField]) : fmt(point[mode.onlineField])}</dd>
+      <dt>${escapeHtml(mode.topicsLabel)}</dt>
+      <dd>${state.onlineChartMode === "ma2h" ? fmtFixed(point[mode.topicsField]) : fmt(point[mode.topicsField])}</dd>
+      <dt>${escapeHtml(mode.secondaryOnlineLabel)}</dt>
+      <dd>${mode.secondaryFormatter(point[mode.secondaryOnlineField])}</dd>
+      <dt>${escapeHtml(mode.secondaryTopicsLabel)}</dt>
+      <dd>${mode.secondaryFormatter(point[mode.secondaryTopicsField])}</dd>
       <dt>Guests/bots</dt>
       <dd>${fmt(point.guests_or_bots)}</dd>
       <dt>Members online</dt>
       <dd>${fmt(point.members_online)}</dd>
-      <dt>Raw topics viewed</dt>
-      <dd>${fmt(point.topics_viewed)}</dd>
     </dl>
   `;
 }
@@ -518,6 +535,7 @@ function renderOnlineChart(payload) {
   state.onlineStatus = payload;
   const svg = $("#online-chart");
   const points = payload.series || [];
+  const mode = onlineChartModeConfig();
   if (points.length === 0) {
     svg.innerHTML = "";
     $("#online-summary").textContent = "No completed online activity snapshots found.";
@@ -533,8 +551,8 @@ function renderOnlineChart(payload) {
   const margin = { top: 22, right: 64, bottom: 42, left: 58 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
-  const maxOnline = Math.max(1, ...points.map((point) => Number(point.online_users_ma2h || 0)));
-  const maxTopics = Math.max(1, ...points.map((point) => Number(point.topics_viewed_ma2h || 0)));
+  const maxOnline = Math.max(1, ...points.map((point) => Number(point[mode.onlineField] || 0)));
+  const maxTopics = Math.max(1, ...points.map((point) => Number(point[mode.topicsField] || 0)));
   const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
   const yOnline = (value) => margin.top + innerHeight - (value / maxOnline) * innerHeight;
   const yTopics = (value) => margin.top + innerHeight - (value / maxTopics) * innerHeight;
@@ -557,10 +575,10 @@ function renderOnlineChart(payload) {
     ${xTickIndexes.map((index) => `
       <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateTimeShort(points[index].completed_at))}</text>
     `).join("")}
-    <text class="axis-label" x="${margin.left}" y="14">users online, 2h avg</text>
-    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics viewed, 2h avg</text>
-    <path class="chart-line online" d="${linePath(points, xScale, yOnline, "online_users_ma2h")}"></path>
-    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "topics_viewed_ma2h")}"></path>
+    <text class="axis-label" x="${margin.left}" y="14">${escapeHtml(mode.onlineLabel.toLowerCase())}</text>
+    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">${escapeHtml(mode.topicsLabel.toLowerCase())}</text>
+    <path class="chart-line online" d="${linePath(points, xScale, yOnline, mode.onlineField)}"></path>
+    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, mode.topicsField)}"></path>
     <g id="online-crosshair" class="chart-crosshair hidden">
       <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
       <circle class="chart-point online" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
@@ -569,6 +587,8 @@ function renderOnlineChart(payload) {
     <rect class="chart-hit-area" x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}"></rect>
   `;
   state.onlineChart = { points, width, height, margin, innerWidth, yOnline, yTopics, xScale };
+  $("#online-legend-users").textContent = mode.onlineLabel;
+  $("#online-legend-topics").textContent = mode.topicsLabel;
   svg.onpointermove = handleOnlinePointer;
   svg.onpointerleave = clearOnlineHover;
 }
@@ -751,6 +771,21 @@ $$(".segment").forEach((button) => {
   button.addEventListener("click", () => {
     state.mode = button.dataset.mode;
     $$(".segment").forEach((item) => item.classList.toggle("active", item === button));
+  });
+});
+
+$$("[data-online-chart-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.onlineChartMode = button.dataset.onlineChartMode;
+    $$("[data-online-chart-mode]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    if (state.onlineStatus) {
+      clearOnlineHover();
+      renderOnlineChart(state.onlineStatus);
+    }
   });
 });
 
