@@ -2,7 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, corpusAvailability, getCorpora } from "./config.js";
-import { getActiveNow, getActivityOverview, getActivityTopics, getMemberVisits } from "./activity.js";
+import { getActiveNow, getActivityOverview, getActivityTopics, getMemberVisits, getOnlineStatus } from "./activity.js";
 import { getIfsqnGrowth, getIfsqnMemberGrowth, getIfsqnMemberRetention } from "./growth.js";
 import { parseSearchInput, searchPosts } from "./search.js";
 import { getTopic } from "./topics.js";
@@ -58,6 +58,10 @@ app.get("/api/activity/active-now", asyncRoute(async (_req, res) => {
 
 app.get("/api/activity/members", asyncRoute(async (req, res) => {
   res.json(await getMemberVisits(config, req.query.rangeHours));
+}));
+
+app.get("/api/activity/online-status", asyncRoute(async (req, res) => {
+  res.json(await getOnlineStatus(config, req.query.rangeHours));
 }));
 
 app.get("/api/ifsqn/growth", asyncRoute(async (req, res) => {

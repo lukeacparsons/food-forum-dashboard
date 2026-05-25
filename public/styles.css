@@ -257,6 +257,10 @@ select {
   gap: 18px;
 }
 
+.split.lower {
+  margin-top: 18px;
+}
+
 .section-heading {
   justify-content: space-between;
   margin-bottom: 10px;
@@ -416,6 +420,12 @@ select {
   background: var(--accent);
 }
 
+.chart-line.online,
+.legend-line.online {
+  stroke: var(--bad);
+  background: var(--bad);
+}
+
 .chart-line.members,
 .legend-line.members {
   stroke: var(--ok);
@@ -449,6 +459,10 @@ select {
 
 .chart-point.topics {
   stroke: var(--accent-2);
+}
+
+.chart-point.online {
+  stroke: var(--bad);
 }
 
 .chart-point.members {

@@ -98,6 +98,7 @@
         <section class="content">
           <nav class="tabs" aria-label="Dashboard views">
             <button class="tab active" type="button" data-view="activity">Online Activity</button>
+            <button class="tab" type="button" data-view="online">Online Pulse</button>
             <button class="tab" type="button" data-view="growth">IFSQN Growth</button>
             <button class="tab" type="button" data-view="search">Post Search</button>
             <button class="tab" type="button" data-view="topic">Topic Detail</button>
@@ -124,6 +125,39 @@
                   <h2>Member Visits</h2>
                 </div>
                 <div id="member-list" class="list compact"></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="view-online" class="view">
+            <div class="section-heading">
+              <div>
+                <h2>Real-Time Online Status</h2>
+                <p id="online-summary" class="status-text">Loading online snapshots...</p>
+              </div>
+            </div>
+            <div id="online-stat-grid" class="mini-metrics"></div>
+            <div class="chart-wrap">
+              <svg id="online-chart" class="chart" role="img" aria-label="Users online and topics viewed per activity snapshot"></svg>
+              <div id="online-tooltip" class="growth-tooltip hidden" role="status"></div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="legend-line online"></i> Users online</span>
+              <span><i class="legend-line topics"></i> Topics viewed</span>
+            </div>
+
+            <div class="split lower">
+              <section>
+                <div class="section-heading lower">
+                  <h2>Topic Views Now</h2>
+                </div>
+                <div id="topics-now-list" class="list compact"></div>
+              </section>
+              <section>
+                <div class="section-heading lower">
+                  <h2>Range Hotspots</h2>
+                </div>
+                <div id="topic-hotspots-list" class="list compact"></div>
               </section>
             </div>
           </section>

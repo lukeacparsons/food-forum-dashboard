@@ -7,6 +7,8 @@ const state = {
   memberGrowth: null,
   memberGrowthChart: null,
   memberRetention: null,
+  onlineStatus: null,
+  onlineChart: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,6 +37,13 @@ function dateFull(value) {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+function dateTimeShort(value) {
+  if (!value) return "";
+  const date = new Date(String(value).replace("+00:00", "Z"));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtFixed(value, digits = 1) {
@@ -241,6 +250,55 @@ function clearMemberGrowthHover() {
   $("#member-growth-tooltip")?.classList.add("hidden");
 }
 
+function setOnlineHover(index) {
+  const meta = state.onlineChart;
+  if (!meta) return;
+
+  const point = meta.points[index];
+  const svg = $("#online-chart");
+  const tooltip = $("#online-tooltip");
+  const crosshair = svg.querySelector("#online-crosshair");
+  if (!point || !tooltip || !crosshair) return;
+
+  const x = meta.xScale(index);
+  const yOnline = meta.yOnline(Number(point.online_users || 0));
+  const yTopics = meta.yTopics(Number(point.topics_viewed || 0));
+  crosshair.classList.remove("hidden");
+  crosshair.querySelector(".chart-crosshair-line").setAttribute("x1", x);
+  crosshair.querySelector(".chart-crosshair-line").setAttribute("x2", x);
+  crosshair.querySelector(".chart-point.online").setAttribute("cx", x);
+  crosshair.querySelector(".chart-point.online").setAttribute("cy", yOnline);
+  crosshair.querySelector(".chart-point.topics").setAttribute("cx", x);
+  crosshair.querySelector(".chart-point.topics").setAttribute("cy", yTopics);
+
+  const rect = svg.getBoundingClientRect();
+  const chartLeft = (x / meta.width) * rect.width;
+  const chartTop = (Math.min(yOnline, yTopics) / meta.height) * rect.height;
+  tooltip.style.left = `${chartLeft}px`;
+  tooltip.style.top = `${Math.max(24, Math.min(rect.height - 24, chartTop))}px`;
+  tooltip.dataset.side = x > meta.width * 0.68 ? "left" : "right";
+  tooltip.classList.remove("hidden");
+  tooltip.innerHTML = `
+    <strong>${escapeHtml(dateTimeShort(point.completed_at))}</strong>
+    <dl>
+      <dt>Users online</dt>
+      <dd>${fmt(point.online_users)}</dd>
+      <dt>Guests/bots</dt>
+      <dd>${fmt(point.guests_or_bots)}</dd>
+      <dt>Members online</dt>
+      <dd>${fmt(point.members_online)}</dd>
+      <dt>Topics viewed</dt>
+      <dd>${fmt(point.topics_viewed)}</dd>
+    </dl>
+  `;
+}
+
+function clearOnlineHover() {
+  const crosshair = $("#online-chart")?.querySelector("#online-crosshair");
+  crosshair?.classList.add("hidden");
+  $("#online-tooltip")?.classList.add("hidden");
+}
+
 function handleGrowthPointer(event) {
   const meta = state.growthChart;
   if (!meta || meta.points.length === 0) return;
@@ -261,6 +319,17 @@ function handleMemberGrowthPointer(event) {
   const rawIndex = Math.round(((viewX - meta.margin.left) / meta.innerWidth) * (meta.points.length - 1));
   const index = Math.max(0, Math.min(meta.points.length - 1, rawIndex));
   setMemberGrowthHover(index);
+}
+
+function handleOnlinePointer(event) {
+  const meta = state.onlineChart;
+  if (!meta || meta.points.length === 0) return;
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  const viewX = ((event.clientX - rect.left) / rect.width) * meta.width;
+  const rawIndex = Math.round(((viewX - meta.margin.left) / meta.innerWidth) * (meta.points.length - 1));
+  const index = Math.max(0, Math.min(meta.points.length - 1, rawIndex));
+  setOnlineHover(index);
 }
 
 function renderGrowthChart(payload) {
@@ -423,6 +492,112 @@ function renderMemberRetention(payload) {
   `;
 }
 
+function renderOnlineTopicRows(container, rows, mode) {
+  container.innerHTML = rows.map((row) => {
+    const primary = mode === "now" ? row.viewers_now : row.observations;
+    const meta = mode === "now"
+      ? `${escapeHtml(row.forum_title || row.category_title || "Unknown forum")} | ${fmt(row.members_now)} members in latest snapshot`
+      : `${escapeHtml(row.forum_title || row.category_title || "Unknown forum")} | peak ${fmt(row.max_seen_at_once)} at once | ${fmt(row.snapshots_seen)} snapshots`;
+    return `
+      <article class="row">
+        <div>
+          <div class="row-title">${topicLink("ifsqn", row.topic_id, row.title || `Topic ${row.topic_id}`)}</div>
+          <div class="row-meta">${meta}</div>
+        </div>
+        <div class="count">${fmt(primary)}</div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderOnlineChart(payload) {
+  state.onlineStatus = payload;
+  const svg = $("#online-chart");
+  const points = payload.series || [];
+  if (points.length === 0) {
+    svg.innerHTML = "";
+    $("#online-summary").textContent = "No completed online activity snapshots found.";
+    $("#online-stat-grid").innerHTML = "";
+    $("#topics-now-list").innerHTML = "";
+    $("#topic-hotspots-list").innerHTML = "";
+    clearOnlineHover();
+    return;
+  }
+
+  const width = 920;
+  const height = 380;
+  const margin = { top: 22, right: 64, bottom: 42, left: 58 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const maxOnline = Math.max(1, ...points.map((point) => Number(point.online_users || 0)));
+  const maxTopics = Math.max(1, ...points.map((point) => Number(point.topics_viewed || 0)));
+  const xScale = (index) => margin.left + (points.length === 1 ? 0 : (index / (points.length - 1)) * innerWidth);
+  const yOnline = (value) => margin.top + innerHeight - (value / maxOnline) * innerHeight;
+  const yTopics = (value) => margin.top + innerHeight - (value / maxTopics) * innerHeight;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const xTickIndexes = Array.from(new Set([0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(ratio * (points.length - 1)))));
+
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = `
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
+    <line class="axis-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+    <line class="axis-line" x1="${margin.left + innerWidth}" y1="${margin.top}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}"></line>
+    ${yTicks.map((tick) => {
+      const y = margin.top + innerHeight - tick * innerHeight;
+      return `
+        <line class="grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + innerWidth}" y2="${y}"></line>
+        <text class="axis-label" x="${margin.left - 10}" y="${y + 4}" text-anchor="end">${Math.round(maxOnline * tick)}</text>
+        <text class="axis-label" x="${margin.left + innerWidth + 10}" y="${y + 4}">${Math.round(maxTopics * tick)}</text>
+      `;
+    }).join("")}
+    ${xTickIndexes.map((index) => `
+      <text class="axis-label" x="${xScale(index)}" y="${height - 12}" text-anchor="middle">${escapeHtml(dateTimeShort(points[index].completed_at))}</text>
+    `).join("")}
+    <text class="axis-label" x="${margin.left}" y="14">users online</text>
+    <text class="axis-label" x="${margin.left + innerWidth}" y="14" text-anchor="end">topics viewed</text>
+    <path class="chart-line online" d="${linePath(points, xScale, yOnline, "online_users")}"></path>
+    <path class="chart-line topics" d="${linePath(points, xScale, yTopics, "topics_viewed")}"></path>
+    <g id="online-crosshair" class="chart-crosshair hidden">
+      <line class="chart-crosshair-line" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + innerHeight}"></line>
+      <circle class="chart-point online" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
+      <circle class="chart-point topics" cx="${margin.left}" cy="${margin.top + innerHeight}" r="4"></circle>
+    </g>
+    <rect class="chart-hit-area" x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}"></rect>
+  `;
+  state.onlineChart = { points, width, height, margin, innerWidth, yOnline, yTopics, xScale };
+  svg.onpointermove = handleOnlinePointer;
+  svg.onpointerleave = clearOnlineHover;
+}
+
+async function loadOnlineStatus() {
+  const range = $("#range-hours").value;
+  const payload = await getJson(`/api/activity/online-status?rangeHours=${encodeURIComponent(range)}`);
+  const summary = payload.summary || {};
+  const latest = payload.latest || {};
+  $("#online-summary").textContent = `${dateText(summary.first_snapshot_utc)} to ${dateText(summary.last_snapshot_utc)} | ${fmt(summary.snapshots)} completed snapshots`;
+  $("#online-stat-grid").innerHTML = `
+    <div class="mini-metric">
+      <span>Online now</span>
+      <strong>${fmt(latest.online_users)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Peak online</span>
+      <strong>${fmt(summary.peak_online_users)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Avg online</span>
+      <strong>${fmtFixed(summary.avg_online_users)}</strong>
+    </div>
+    <div class="mini-metric">
+      <span>Topics now</span>
+      <strong>${fmt(latest.topics_viewed)}</strong>
+    </div>
+  `;
+  renderOnlineChart(payload);
+  renderOnlineTopicRows($("#topics-now-list"), payload.topics_now || [], "now");
+  renderOnlineTopicRows($("#topic-hotspots-list"), payload.topic_hotspots || [], "hotspots");
+}
+
 async function loadGrowth() {
   const range = $("#growth-range").value;
   const [payload, memberPayload, retentionPayload] = await Promise.all([
@@ -561,7 +736,7 @@ async function loadTopic(corpus, topicId) {
 }
 
 async function refreshAll() {
-  await Promise.all([loadHealth(), loadOverview(), loadActivity(), loadGrowth()]);
+  await Promise.all([loadHealth(), loadOverview(), loadActivity(), loadOnlineStatus(), loadGrowth()]);
 }
 
 $$(".tab").forEach((button) => {
