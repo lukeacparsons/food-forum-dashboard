@@ -61,7 +61,7 @@ app.get("/api/activity/members", asyncRoute(async (req, res) => {
 }));
 
 app.get("/api/activity/online-status", asyncRoute(async (req, res) => {
-  res.json(await getOnlineStatus(config, req.query.rangeHours));
+  res.json(await getOnlineStatus(config, req.query));
 }));
 
 app.get("/api/ifsqn/growth", asyncRoute(async (req, res) => {

@@ -10,6 +10,7 @@ const state = {
   onlineStatus: null,
   onlineCharts: {},
   onlineChartMode: "ma2h",
+  onlineTopicFilter: "all",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -71,6 +72,14 @@ function onlineChartModeConfig() {
 
 function onlineValueFormatter() {
   return state.onlineChartMode === "ma2h" ? fmtFixed : fmt;
+}
+
+function onlineTopicFilterParams() {
+  return state.onlineTopicFilter === "members" ? "&memberViewsOnly=1" : "";
+}
+
+function onlineTopicFilterLabel() {
+  return state.onlineTopicFilter === "members" ? "Member" : "Topic";
 }
 
 function clip(value, length = 380) {
@@ -522,7 +531,7 @@ function renderOnlineTopicRows(container, rows, mode) {
     const primary = mode === "now" ? row.viewers_now : row.observations;
     const meta = mode === "now"
       ? `${escapeHtml(row.forum_title || row.category_title || "Unknown forum")} | ${fmt(row.members_now)} members in latest snapshot`
-      : `${escapeHtml(row.forum_title || row.category_title || "Unknown forum")} | peak ${fmt(row.max_seen_at_once)} at once | ${fmt(row.snapshots_seen)} snapshots`;
+      : `${escapeHtml(row.forum_title || row.category_title || "Unknown forum")} | peak ${fmt(row.max_seen_at_once)} at once | ${fmt(row.snapshots_seen)} snapshots | ${fmt(row.member_observations)} member obs`;
     return `
       <article class="row">
         <div>
@@ -530,6 +539,29 @@ function renderOnlineTopicRows(container, rows, mode) {
           <div class="row-meta">${meta}</div>
         </div>
         <div class="count">${fmt(primary)}</div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderOnlineConsistencyRows(container, rows) {
+  container.innerHTML = rows.map((row) => {
+    const meta = [
+      escapeHtml(row.forum_title || row.category_title || "Unknown forum"),
+      `${fmt(row.observations)} obs`,
+      `${fmt(row.snapshots_seen)} snapshots`,
+      `peak ${fmt(row.max_seen_at_once)}`,
+      state.onlineTopicFilter === "members"
+        ? `${fmt(row.days_with_member_view)} member days`
+        : `${fmt(row.member_observations)} member obs`,
+    ].join(" | ");
+    return `
+      <article class="row">
+        <div>
+          <div class="row-title">${topicLink("ifsqn", row.topic_id, row.title || `Topic ${row.topic_id}`)}</div>
+          <div class="row-meta">${meta}</div>
+        </div>
+        <div class="count">${fmt(row.active_days)}d</div>
       </article>
     `;
   }).join("");
@@ -625,9 +657,10 @@ function renderOnlineChart(payload) {
 
 async function loadOnlineStatus() {
   const range = $("#range-hours").value;
-  const payload = await getJson(`/api/activity/online-status?rangeHours=${encodeURIComponent(range)}`);
+  const payload = await getJson(`/api/activity/online-status?rangeHours=${encodeURIComponent(range)}${onlineTopicFilterParams()}`);
   const summary = payload.summary || {};
   const latest = payload.latest || {};
+  const topicLabel = onlineTopicFilterLabel();
   $("#online-summary").textContent = `${dateText(summary.first_snapshot_utc)} to ${dateText(summary.last_snapshot_utc)} | ${fmt(summary.snapshots)} completed snapshots`;
   $("#online-stat-grid").innerHTML = `
     <div class="mini-metric">
@@ -647,9 +680,13 @@ async function loadOnlineStatus() {
       <strong>${fmt(latest.topics_viewed)}</strong>
     </div>
   `;
+  $("#topics-now-title").textContent = `${topicLabel} Views Now`;
+  $("#topic-hotspots-title").textContent = `${topicLabel} Hotspots`;
+  $("#topic-consistency-title").textContent = `${topicLabel} Consistency`;
   renderOnlineChart(payload);
   renderOnlineTopicRows($("#topics-now-list"), payload.topics_now || [], "now");
   renderOnlineTopicRows($("#topic-hotspots-list"), payload.topic_hotspots || [], "hotspots");
+  renderOnlineConsistencyRows($("#topic-consistency-list"), payload.topic_consistency || []);
 }
 
 async function loadGrowth() {
@@ -816,6 +853,20 @@ $$("[data-online-chart-mode]").forEach((button) => {
       clearOnlineHover();
       renderOnlineChart(state.onlineStatus);
     }
+  });
+});
+
+$$("[data-online-topic-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.onlineTopicFilter = button.dataset.onlineTopicFilter;
+    $$("[data-online-topic-filter]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    loadOnlineStatus().catch((error) => {
+      $("#online-summary").textContent = error.message;
+    });
   });
 });
 

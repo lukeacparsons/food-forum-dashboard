@@ -135,9 +135,15 @@
                 <h2>Real-Time Online Status</h2>
                 <p id="online-summary" class="status-text">Loading online snapshots...</p>
               </div>
-              <div class="segmented chart-mode-toggle" role="group" aria-label="Online chart smoothing">
-                <button class="chart-mode" type="button" data-online-chart-mode="raw" aria-pressed="false">Raw</button>
-                <button class="chart-mode active" type="button" data-online-chart-mode="ma2h" aria-pressed="true">2h avg</button>
+              <div class="online-controls">
+                <div class="segmented chart-mode-toggle" role="group" aria-label="Online chart smoothing">
+                  <button class="chart-mode" type="button" data-online-chart-mode="raw" aria-pressed="false">Raw</button>
+                  <button class="chart-mode active" type="button" data-online-chart-mode="ma2h" aria-pressed="true">2h avg</button>
+                </div>
+                <div class="segmented chart-mode-toggle" role="group" aria-label="Online topic view filter">
+                  <button class="chart-mode active" type="button" data-online-topic-filter="all" aria-pressed="true">All views</button>
+                  <button class="chart-mode" type="button" data-online-topic-filter="members" aria-pressed="false">Member views</button>
+                </div>
               </div>
             </div>
             <div id="online-stat-grid" class="mini-metrics"></div>
@@ -164,18 +170,24 @@
               </section>
             </div>
 
-            <div class="split lower">
+            <div class="online-topic-panels lower">
               <section>
                 <div class="section-heading lower">
-                  <h2>Topic Views Now</h2>
+                  <h2 id="topics-now-title">Topic Views Now</h2>
                 </div>
                 <div id="topics-now-list" class="list compact"></div>
               </section>
               <section>
                 <div class="section-heading lower">
-                  <h2>Range Hotspots</h2>
+                  <h2 id="topic-hotspots-title">Range Hotspots</h2>
                 </div>
                 <div id="topic-hotspots-list" class="list compact"></div>
+              </section>
+              <section>
+                <div class="section-heading lower">
+                  <h2 id="topic-consistency-title">Consistency</h2>
+                </div>
+                <div id="topic-consistency-list" class="list compact"></div>
               </section>
             </div>
           </section>

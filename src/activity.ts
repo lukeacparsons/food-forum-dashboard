@@ -78,6 +78,9 @@ type TopicViewingRow = {
   snapshots_seen?: number;
   members_now?: number;
   member_observations?: number;
+  active_days?: number;
+  days_with_member_view?: number;
+  avg_observations_per_active_day?: number;
   latest_activity_utc: string | null;
   title: string | null;
   forum_title: string | null;
@@ -97,6 +100,10 @@ function limitValue(value: unknown, fallback: number, max: number): number {
     return fallback;
   }
   return Math.max(1, Math.min(Math.trunc(parsed), max));
+}
+
+function booleanValue(value: unknown): boolean {
+  return value === "1" || value === "true" || value === true;
 }
 
 export async function getActivityOverview(config: AppConfig, rangeHoursValue: unknown) {
@@ -246,9 +253,11 @@ export async function getMemberVisits(config: AppConfig, rangeHoursValue: unknow
   };
 }
 
-export async function getOnlineStatus(config: AppConfig, rangeHoursValue: unknown) {
-  const rangeHours = limitValue(rangeHoursValue, 24, MAX_ACTIVITY_RANGE_HOURS);
+export async function getOnlineStatus(config: AppConfig, query: Record<string, unknown>) {
+  const rangeHours = limitValue(query.rangeHours, 24, MAX_ACTIVITY_RANGE_HOURS);
   const cutoff = cutoffIso(rangeHours);
+  const memberViewsOnly = booleanValue(query.memberViewsOnly);
+  const memberViewWhere = memberViewsOnly ? "AND e.member_id IS NOT NULL" : "";
 
   const series = await sqliteJson<OnlineSnapshotRow>(config, config.IFSQN_DB_PATH, `
     WITH raw AS (
@@ -334,6 +343,7 @@ export async function getOnlineStatus(config: AppConfig, rangeHoursValue: unknow
     LEFT JOIN topics t ON t.topic_id = e.topic_id
     LEFT JOIN forums f ON f.forum_id = t.forum_id
     WHERE e.topic_id IS NOT NULL
+      ${memberViewWhere}
     GROUP BY e.topic_id
     ORDER BY viewers_now DESC
     LIMIT 15
@@ -352,6 +362,7 @@ export async function getOnlineStatus(config: AppConfig, rangeHoursValue: unknow
       WHERE s.status = 'completed'
         AND s.completed_at >= ${sqlLiteral(cutoff)}
         AND e.topic_id IS NOT NULL
+        ${memberViewWhere}
       GROUP BY e.topic_id, e.snapshot_id
     )
     SELECT
@@ -373,9 +384,61 @@ export async function getOnlineStatus(config: AppConfig, rangeHoursValue: unknow
     LIMIT 15
   `, 60_000);
 
+  const topicConsistency = await sqliteJson<TopicViewingRow>(config, config.IFSQN_DB_PATH, `
+    WITH grouped AS (
+      SELECT
+        e.topic_id,
+        date(s.completed_at) AS observed_day,
+        e.snapshot_id,
+        COUNT(*) AS seen_in_snapshot,
+        SUM(CASE WHEN e.member_id IS NOT NULL THEN 1 ELSE 0 END) AS members_in_snapshot,
+        MAX(e.activity_at_utc) AS latest_activity_utc
+      FROM online_activity_events e
+      JOIN online_activity_snapshots s ON s.snapshot_id = e.snapshot_id
+      WHERE s.status = 'completed'
+        AND s.completed_at >= ${sqlLiteral(cutoff)}
+        AND e.topic_id IS NOT NULL
+        ${memberViewWhere}
+      GROUP BY e.topic_id, observed_day, e.snapshot_id
+    ),
+    by_day AS (
+      SELECT
+        topic_id,
+        observed_day,
+        SUM(seen_in_snapshot) AS observations_for_day,
+        COUNT(*) AS snapshots_for_day,
+        MAX(seen_in_snapshot) AS max_seen_for_day,
+        SUM(members_in_snapshot) AS member_observations_for_day,
+        MAX(latest_activity_utc) AS latest_activity_utc
+      FROM grouped
+      GROUP BY topic_id, observed_day
+    )
+    SELECT
+      d.topic_id,
+      COUNT(*) AS active_days,
+      SUM(d.observations_for_day) AS observations,
+      SUM(d.snapshots_for_day) AS snapshots_seen,
+      MAX(d.max_seen_for_day) AS max_seen_at_once,
+      ROUND(AVG(d.observations_for_day), 1) AS avg_observations_per_active_day,
+      SUM(d.member_observations_for_day) AS member_observations,
+      SUM(CASE WHEN d.member_observations_for_day > 0 THEN 1 ELSE 0 END) AS days_with_member_view,
+      MAX(d.latest_activity_utc) AS latest_activity_utc,
+      t.title,
+      f.title AS forum_title,
+      f.category_title,
+      t.url
+    FROM by_day d
+    LEFT JOIN topics t ON t.topic_id = d.topic_id
+    LEFT JOIN forums f ON f.forum_id = t.forum_id
+    GROUP BY d.topic_id
+    ORDER BY active_days DESC, observations DESC
+    LIMIT 25
+  `, 60_000);
+
   return {
     range_hours: rangeHours,
     cutoff_utc: cutoff,
+    member_views_only: memberViewsOnly,
     summary: summary ?? {
       first_snapshot_utc: null,
       last_snapshot_utc: null,
@@ -389,5 +452,6 @@ export async function getOnlineStatus(config: AppConfig, rangeHoursValue: unknow
     series,
     topics_now: topicsNow,
     topic_hotspots: topicHotspots,
+    topic_consistency: topicConsistency,
   };
 }

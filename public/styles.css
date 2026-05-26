@@ -422,6 +422,23 @@ select {
   white-space: nowrap;
 }
 
+.online-controls,
+.online-topic-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  gap: 8px;
+  align-items: center;
+}
+
+.online-topic-panels {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.online-topic-panels.lower {
+  margin-top: 18px;
+}
+
 .chart {
   display: block;
   width: 100%;
@@ -647,7 +664,8 @@ select {
 @media (max-width: 980px) {
   .topbar,
   .workspace,
-  .split {
+  .split,
+  .online-topic-panels {
     grid-template-columns: 1fr;
   }
 
@@ -687,8 +705,14 @@ select {
 
   .toolbar,
   .tabs,
-  .section-heading {
+  .section-heading,
+  .online-controls {
     flex-wrap: wrap;
+  }
+
+  .online-controls {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 
   .row {
